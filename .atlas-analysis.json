@@ -1,0 +1,122 @@
+{
+  "projectType": "frontend",
+  "projectName": "Start UI [web]",
+  "projectDescription": "An opinionated full-stack TypeScript starter with React, TanStack Start, Tailwind CSS, shadcn/ui, and comprehensive tooling for rapid web app development",
+  "theme": "palm",
+  "primaryColor": "#FF6B35",
+  "lightColor": "#FFB5A0",
+  "darkColor": "#CC5529",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/architecture",
+              "concepts/routing",
+              "concepts/authentication",
+              "concepts/database",
+              "concepts/api-layer"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/authentication",
+              "guides/database-setup",
+              "guides/forms",
+              "guides/email-templates",
+              "guides/file-uploads",
+              "guides/internationalization",
+              "guides/environment-variables",
+              "guides/testing",
+              "guides/storybook"
+            ]
+          },
+          {
+            "group": "Components",
+            "pages": [
+              "components/overview",
+              "components/ui-components",
+              "components/form-fields",
+              "components/custom-icons"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/overview",
+              "deployment/production-build",
+              "deployment/docker",
+              "deployment/environment-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api/overview",
+              "api/getting-started"
+            ]
+          },
+          {
+            "group": "Routers",
+            "pages": [
+              "api/routers/account",
+              "api/routers/user",
+              "api/routers/book",
+              "api/routers/genre",
+              "api/routers/config"
+            ]
+          },
+          {
+            "group": "Server Utilities",
+            "pages": [
+              "api/server/auth",
+              "api/server/database",
+              "api/server/email",
+              "api/server/logger"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Full-stack React with TanStack Start",
+    "Type-safe API layer with oRPC",
+    "Authentication with Better Auth (OAuth + Email OTP)",
+    "Database ORM with Prisma",
+    "UI components with shadcn/ui and Tailwind CSS",
+    "Form handling with React Hook Form",
+    "Email templates with React Email",
+    "File uploads with Better Upload",
+    "Internationalization (i18n) with i18next",
+    "Component development with Storybook",
+    "Testing with Vitest and Playwright",
+    "Docker Compose for local development"
+  ],
+  "publicApiSurface": [
+    "account router - Profile management endpoints",
+    "user router - User CRUD operations (admin)",
+    "book router - Book catalog management",
+    "genre router - Genre management",
+    "config router - Application configuration",
+    "auth endpoints - OAuth, email OTP, session management",
+    "openapi endpoint - Interactive API documentation"
+  ]
+}
