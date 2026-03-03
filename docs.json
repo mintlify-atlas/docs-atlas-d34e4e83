@@ -51,6 +51,7 @@
               "guides/file-uploads",
               "guides/internationalization",
               "guides/environment-variables",
+              "guides/hooks",
               "guides/testing",
               "guides/storybook"
             ]

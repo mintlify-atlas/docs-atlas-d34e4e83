@@ -1,0 +1,266 @@
+---
+title: Custom hooks
+description: Reusable React hooks included in Start UI [web]
+---
+
+Start UI [web] includes several custom React hooks for common functionality. These hooks follow React best practices and integrate seamlessly with the starter's architecture.
+
+## Available hooks
+
+<CardGroup cols={2}>
+  <Card title="useClipboard" icon="clipboard">
+    Copy text to clipboard with feedback
+  </Card>
+  <Card title="useHydrated" icon="droplet">
+    Detect client-side hydration status
+  </Card>
+  <Card title="useMediaQuery" icon="mobile">
+    Match CSS media queries in React
+  </Card>
+  <Card title="useIsMobile" icon="mobile-screen">
+    Detect mobile viewport
+  </Card>
+  <Card title="useNavigateBack" icon="arrow-left">
+    Navigate back with fallback
+  </Card>
+  <Card title="useValueHasChanged" icon="arrows-rotate">
+    Track value changes between renders
+  </Card>
+</CardGroup>
+
+## useClipboard
+
+Copy text to the clipboard with visual feedback. Built on `@uidotdev/usehooks`.
+
+```tsx src/hooks/use-clipboard.ts
+import { useClipboard } from '@/hooks/use-clipboard';
+
+function CopyButton({ text }: { text: string }) {
+  const { copyToClipboard, isCopied } = useClipboard({ 
+    showDuration: 2000 
+  });
+
+  return (
+    <button onClick={() => copyToClipboard(text)}>
+      {isCopied ? 'Copied!' : 'Copy'}
+    </button>
+  );
+}
+```
+
+### Parameters
+
+<ParamField path="options" type="object">
+  Configuration object
+
+  <Expandable title="properties">
+    <ParamField path="showDuration" type="number" default={2000}>
+      Duration in milliseconds to show the "copied" state
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+### Returns
+
+<ResponseField name="copyToClipboard" type="(text: string) => void">
+  Function to copy text to clipboard
+</ResponseField>
+
+<ResponseField name="isCopied" type="boolean">
+  Whether text was recently copied (resets after `showDuration`)
+</ResponseField>
+
+## useHydrated
+
+Detect whether the component has hydrated on the client. Returns `false` during SSR and `true` after client hydration.
+
+```tsx src/hooks/use-hydrated.ts
+import { useHydrated } from '@/hooks/use-hydrated';
+
+function ClientOnlyComponent() {
+  const isHydrated = useHydrated();
+
+  if (!isHydrated) {
+    return <div>Loading...</div>;
+  }
+
+  return <div>Client-side content</div>;
+}
+```
+
+### Returns
+
+<ResponseField name="isHydrated" type="boolean">
+  `false` during SSR, `true` after client hydration
+</ResponseField>
+
+<Tip>
+Use this hook to prevent hydration mismatches when rendering client-only content like browser APIs, localStorage, or dynamic imports.
+</Tip>
+
+## useMediaQuery
+
+Match CSS media queries in React. Updates when the media query match changes.
+
+```tsx src/hooks/use-media-query.ts
+import { useMediaQuery } from '@/hooks/use-media-query';
+
+function ResponsiveComponent() {
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  const isDarkMode = useMediaQuery('(prefers-color-scheme: dark)');
+
+  return (
+    <div>
+      {isDesktop ? 'Desktop Layout' : 'Mobile Layout'}
+      {isDarkMode && <span>Dark mode active</span>}
+    </div>
+  );
+}
+```
+
+### Parameters
+
+<ParamField path="query" type="string" required>
+  CSS media query string (e.g., `"(min-width: 768px)"`)
+</ParamField>
+
+### Returns
+
+<ResponseField name="matches" type="boolean">
+  Whether the media query currently matches
+</ResponseField>
+
+<Note>
+This hook uses `useSyncExternalStore` for safe SSR. It returns `false` during server rendering.
+</Note>
+
+## useIsMobile
+
+Detect whether the viewport is mobile-sized. Convenience wrapper around `useMediaQuery`.
+
+```tsx src/hooks/use-mobile.ts
+import { useIsMobile } from '@/hooks/use-mobile';
+
+function AdaptiveComponent() {
+  const isMobile = useIsMobile(); // Default: 768px
+  const isSmall = useIsMobile(640); // Custom breakpoint
+
+  return (
+    <nav>
+      {isMobile ? <MobileMenu /> : <DesktopMenu />}
+    </nav>
+  );
+}
+```
+
+### Parameters
+
+<ParamField path="breakpoint" type="number" default={768}>
+  Maximum width in pixels to consider "mobile"
+</ParamField>
+
+### Returns
+
+<ResponseField name="isMobile" type="boolean">
+  `true` if viewport width ≤ breakpoint
+</ResponseField>
+
+## useNavigateBack
+
+Navigate to the previous page with intelligent fallback. If browser history is available, uses `history.back()`. Otherwise, navigates to parent route.
+
+```tsx src/hooks/use-navigate-back.ts
+import { useNavigateBack } from '@/hooks/use-navigate-back';
+
+function BackButton() {
+  const { navigateBack, canGoBack } = useNavigateBack();
+
+  return (
+    <button onClick={() => navigateBack()}>
+      {canGoBack ? 'Go Back' : 'Go to Parent'}
+    </button>
+  );
+}
+```
+
+### Returns
+
+<ResponseField name="navigateBack" type="(options?: NavigateOptions) => void">
+  Function to navigate back or to parent route
+</ResponseField>
+
+<ResponseField name="canGoBack" type="boolean">
+  Whether browser history is available
+</ResponseField>
+
+<Tip>
+This hook ensures a good UX when users land directly on a deep page (no history) by navigating to the parent route instead of doing nothing.
+</Tip>
+
+## useValueHasChanged
+
+Track whether a value has changed between renders. Useful for triggering effects only when dependencies actually change.
+
+```tsx src/hooks/use-value-has-changed.ts
+import { useValueHasChanged } from '@/hooks/use-value-has-changed';
+
+function OptimizedComponent({ userId }: { userId: string }) {
+  const userIdChanged = useValueHasChanged(userId);
+
+  useEffect(() => {
+    if (userIdChanged) {
+      console.log('User ID changed, refetch data');
+      // Perform side effect
+    }
+  }, [userIdChanged]);
+
+  return <div>User: {userId}</div>;
+}
+```
+
+### Parameters
+
+<ParamField path="value" type="unknown" required>
+  Value to track for changes
+</ParamField>
+
+### Returns
+
+<ResponseField name="hasChanged" type="boolean">
+  `true` if value differs from previous render, `false` otherwise
+</ResponseField>
+
+<Warning>
+On the first render, this hook returns `false` since there's no previous value to compare against.
+</Warning>
+
+## Best practices
+
+<AccordionGroup>
+  <Accordion title="SSR-safe hooks">
+    `useHydrated`, `useMediaQuery`, and `useIsMobile` are SSR-safe and return sensible defaults during server rendering.
+  </Accordion>
+
+  <Accordion title="Cleanup">
+    All hooks properly clean up event listeners and timers. No manual cleanup required.
+  </Accordion>
+
+  <Accordion title="TypeScript support">
+    All hooks are fully typed with TypeScript for type safety and autocomplete.
+  </Accordion>
+
+  <Accordion title="Performance">
+    Hooks use React best practices like `useSyncExternalStore` and proper dependency arrays for optimal performance.
+  </Accordion>
+</AccordionGroup>
+
+## Related resources
+
+<CardGroup cols={2}>
+  <Card title="Components" href="/components/overview" icon="palette">
+    Explore UI components that use these hooks
+  </Card>
+  <Card title="Architecture" href="/concepts/architecture" icon="sitemap">
+    Learn about the project structure
+  </Card>
+</CardGroup>
