@@ -1,0 +1,193 @@
+---
+title: Components Overview
+description: Comprehensive component library built on shadcn/ui with custom enhancements
+---
+
+Start UI [web] includes a rich component library that combines the power of shadcn/ui with custom-built components tailored for production applications.
+
+## Component Foundation
+
+The component library is built on several key foundations:
+
+<CardGroup cols={2}>
+  <Card title="Base UI" icon="square-sliders">
+    Uses [@base-ui/react](https://base-ui.com) for accessible primitives
+  </Card>
+  <Card title="Class Variance Authority" icon="paint-brush">
+    Type-safe variant management with [CVA](https://cva.style)
+  </Card>
+  <Card title="Tailwind CSS" icon="wind">
+    Utility-first styling with Tailwind CSS v4
+  </Card>
+  <Card title="TypeScript" icon="code">
+    Full TypeScript support with strict type checking
+  </Card>
+</CardGroup>
+
+## Component Categories
+
+### UI Components
+
+Pre-built UI components from shadcn/ui with custom styling:
+
+- **Layout**: Card, Separator, Sidebar, Sheet, Drawer
+- **Navigation**: Breadcrumb, Dropdown Menu, Sidebar
+- **Forms**: Input, Select, Checkbox, Radio Group, Textarea
+- **Feedback**: Alert, Toast (Sonner), Skeleton, Spinner
+- **Overlays**: Dialog, Popover, Tooltip, Responsive Drawer
+- **Data Display**: Avatar, Badge, Calendar, Date Picker
+- **Interactive**: Button, Button Link, Responsive Icon Button
+
+<Note>
+All UI components are located in `src/components/ui/`
+</Note>
+
+### Form Field Components
+
+Form components that integrate with React Hook Form:
+
+- `FieldText` - Text and email inputs
+- `FieldTextarea` - Multi-line text input
+- `FieldNumber` - Numeric input
+- `FieldSelect` - Dropdown selection
+- `FieldCombobox` - Searchable select (single)
+- `FieldComboboxMultiple` - Multi-select combobox
+- `FieldCheckbox` - Single checkbox
+- `FieldCheckboxGroup` - Multiple checkboxes
+- `FieldRadioGroup` - Radio button group
+- `FieldDate` - Date picker
+- `FieldOtp` - One-time password input
+
+<Note>
+All form field components are located in `src/components/form/`
+</Note>
+
+### Custom Icons
+
+Start UI uses a custom icon generation system based on SVG sources:
+
+- Source SVGs stored in `src/components/icons/svg-sources/`
+- Automatically generated React components via SVGR
+- Three variants per icon: regular, fill, and duotone
+- Full TypeScript support
+
+## Architecture Patterns
+
+### Variant-Based Components
+
+Components use Class Variance Authority (CVA) for type-safe variants:
+
+```tsx src/components/ui/button.tsx
+const buttonVariants = cva(
+  "base-classes",
+  {
+    variants: {
+      variant: {
+        default: 'bg-primary text-primary-foreground',
+        secondary: 'border-border bg-background',
+        ghost: 'hover:bg-black/5 dark:hover:bg-white/10',
+        destructive: 'bg-destructive text-destructive-foreground',
+      },
+      size: {
+        default: 'h-9 px-4',
+        sm: 'h-8 px-3',
+        lg: 'h-10 px-6',
+        icon: 'size-9',
+      },
+    },
+    defaultVariants: {
+      variant: 'default',
+      size: 'default',
+    },
+  }
+);
+```
+
+### Form Field Pattern
+
+All form fields follow a consistent pattern:
+
+1. Use `useFormField()` for field context
+2. Use `useFormFieldController()` for React Hook Form integration
+3. Wrap in `FormFieldContainer` for layout
+4. Include `FormFieldError` for validation messages
+
+```tsx
+export const FieldText = (props) => {
+  const ctx = useFormField();
+  const { field, fieldState } = useFormFieldController();
+
+  return (
+    <FormFieldContainer>
+      <Input
+        id={ctx.id}
+        aria-invalid={fieldState.invalid ? true : undefined}
+        {...field}
+      />
+      <FormFieldError />
+    </FormFieldContainer>
+  );
+};
+```
+
+### Responsive Components
+
+Special components adapt to mobile/desktop:
+
+- `ResponsiveIconButton` - Shows icon-only on mobile, label on desktop
+- `ResponsiveIconButtonLink` - Link variant of responsive icon button
+- `ResponsiveDrawer` - Drawer on mobile, dialog on desktop
+- `ConfirmResponsiveDrawer` - Confirmation variant with confirm/cancel actions
+
+## Component Features
+
+### Accessibility
+
+- ARIA attributes on all interactive components
+- Keyboard navigation support
+- Screen reader compatible
+- Focus management
+
+### Dark Mode
+
+- All components support light and dark themes
+- Uses `next-themes` for theme switching
+- CSS variables for theming
+- Automatic system preference detection
+
+### Internationalization
+
+- Built-in i18n support via `react-i18next`
+- Translation keys in form field components
+- Locale-aware date/time components
+
+## Component Discovery
+
+Start UI includes Storybook for component development and documentation:
+
+```bash
+pnpm storybook
+```
+
+This opens an interactive catalog of all components with:
+- Live examples
+- Props documentation
+- Accessibility testing
+- Dark mode preview
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="UI Components" href="/components/ui-components" icon="palette">
+    Explore the full UI component catalog
+  </Card>
+  <Card title="Form Fields" href="/components/form-fields" icon="input-text">
+    Learn about form field components
+  </Card>
+  <Card title="Custom Icons" href="/components/custom-icons" icon="icons">
+    Generate custom icons from SVG
+  </Card>
+  <Card title="Storybook" href="/guides/storybook" icon="book">
+    Component development environment
+  </Card>
+</CardGroup>

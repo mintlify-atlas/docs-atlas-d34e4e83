@@ -1,0 +1,643 @@
+---
+title: Form Field Components
+description: React Hook Form integrated field components with validation
+---
+
+Start UI [web] provides form field components that seamlessly integrate with React Hook Form, offering type-safe validation and consistent styling.
+
+## Overview
+
+All form field components follow a consistent pattern:
+
+- Full React Hook Form integration
+- Automatic error display
+- Accessibility features (ARIA labels, validation states)
+- Consistent layout with `FormFieldContainer`
+- TypeScript support for props and validation
+
+<Note>
+Form field components are located in `src/components/form/`
+</Note>
+
+## Form Field Pattern
+
+All field components share a common architecture:
+
+```tsx
+import { useFormField } from '@/components/form/form-field';
+import { useFormFieldController } from '@/components/form/form-field-controller/context';
+import { FormFieldContainer } from '@/components/form/form-field-container';
+import { FormFieldError } from '@/components/form/form-field-error';
+
+export const FieldExample = (props) => {
+  const ctx = useFormField();                    // Field context (id, describedBy)
+  const { field, fieldState } = useFormFieldController(); // React Hook Form
+
+  return (
+    <FormFieldContainer>
+      <Input
+        id={ctx.id}
+        aria-invalid={fieldState.invalid ? true : undefined}
+        aria-describedby={ctx.describedBy(fieldState.invalid)}
+        {...field}
+      />
+      <FormFieldError />  {/* Auto-displays validation errors */}
+    </FormFieldContainer>
+  );
+};
+```
+
+## Text Input Fields
+
+### FieldText
+
+Standard text input for text, email, tel, etc.
+
+```tsx src/components/form/field-text/index.tsx
+import { Form, FormField } from '@/components/form';
+import { FieldText } from '@/components/form/field-text';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const schema = z.object({
+  email: z.string().email(),
+  name: z.string().min(2),
+});
+
+function MyForm() {
+  const form = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: { email: '', name: '' },
+  });
+
+  return (
+    <Form form={form}>
+      <FormField
+        control={form.control}
+        name="email"
+        label="Email"
+      >
+        <FieldText
+          type="email"
+          placeholder="you@example.com"
+          autoComplete="email"
+        />
+      </FormField>
+
+      <FormField
+        control={form.control}
+        name="name"
+        label="Name"
+        helper="Your full name"
+      >
+        <FieldText
+          type="text"
+          placeholder="John Doe"
+        />
+      </FormField>
+    </Form>
+  );
+}
+```
+
+**Props**:
+- `type?: string` - Input type (text, email, tel, url, etc.)
+- `placeholder?: string`
+- `autoComplete?: string`
+- `containerProps?: object` - Props for FormFieldContainer
+- All Input component props
+
+### FieldTextarea
+
+Multi-line text input.
+
+```tsx
+import { FieldTextarea } from '@/components/form/field-textarea';
+
+<FormField
+  control={form.control}
+  name="description"
+  label="Description"
+>
+  <FieldTextarea
+    placeholder="Enter description..."
+    rows={4}
+  />
+</FormField>
+```
+
+### FieldNumber
+
+Numeric input with number constraints.
+
+```tsx
+import { FieldNumber } from '@/components/form/field-number';
+
+const schema = z.object({
+  age: z.number().min(18).max(120),
+});
+
+<FormField
+  control={form.control}
+  name="age"
+  label="Age"
+>
+  <FieldNumber
+    min={18}
+    max={120}
+    placeholder="Enter age"
+  />
+</FormField>
+```
+
+### FieldOtp
+
+One-time password input.
+
+```tsx
+import { FieldOtp } from '@/components/form/field-otp';
+
+const schema = z.object({
+  code: z.string().length(6),
+});
+
+<FormField
+  control={form.control}
+  name="code"
+  label="Verification Code"
+>
+  <FieldOtp maxLength={6} />
+</FormField>
+```
+
+## Selection Fields
+
+### FieldSelect
+
+Dropdown selection field.
+
+```tsx src/components/form/field-select/index.tsx
+import { FieldSelect } from '@/components/form/field-select';
+
+const countries = [
+  { label: 'United States', value: 'us' },
+  { label: 'Canada', value: 'ca' },
+  { label: 'Mexico', value: 'mx', disabled: true },
+];
+
+const schema = z.object({
+  country: z.string(),
+});
+
+<FormField
+  control={form.control}
+  name="country"
+  label="Country"
+>
+  <FieldSelect
+    items={countries}
+    placeholder="Select a country"
+  />
+</FormField>
+```
+
+**Props**:
+- `items: Array<{ label: string; value: any; disabled?: boolean }>` - Options (required)
+- `placeholder?: string`
+- `containerProps?: object`
+- `inputProps?: object` - Props for SelectValue
+
+### FieldCombobox
+
+Searchable single-select field.
+
+```tsx src/components/form/field-combobox/index.tsx
+import { FieldCombobox } from '@/components/form/field-combobox';
+
+const fruits = [
+  { label: 'Apple', value: 'apple' },
+  { label: 'Banana', value: 'banana' },
+  { label: 'Orange', value: 'orange' },
+];
+
+<FormField
+  control={form.control}
+  name="fruit"
+  label="Favorite Fruit"
+>
+  <FieldCombobox
+    items={fruits}
+    placeholder="Search fruits..."
+    showClear
+    emptyContent="No fruits found"
+  />
+</FormField>
+```
+
+**Props**:
+- `items: Array<{ label: string; value: any; disabled?: boolean }>` - Options (required)
+- `placeholder?: string`
+- `showClear?: boolean` - Show clear button
+- `emptyContent?: ReactNode` - Content when no results
+- `children?: (item) => ReactElement` - Custom item renderer
+
+### FieldComboboxMultiple
+
+Searchable multi-select field.
+
+```tsx
+import { FieldComboboxMultiple } from '@/components/form/field-combobox-multiple';
+
+const schema = z.object({
+  tags: z.array(z.string()),
+});
+
+const tags = [
+  { label: 'React', value: 'react' },
+  { label: 'TypeScript', value: 'typescript' },
+  { label: 'Tailwind', value: 'tailwind' },
+];
+
+<FormField
+  control={form.control}
+  name="tags"
+  label="Tags"
+>
+  <FieldComboboxMultiple
+    items={tags}
+    placeholder="Select tags..."
+  />
+</FormField>
+```
+
+## Boolean Fields
+
+### FieldCheckbox
+
+Single checkbox field.
+
+```tsx src/components/form/field-checkbox/index.tsx
+import { FieldCheckbox } from '@/components/form/field-checkbox';
+
+const schema = z.object({
+  terms: z.boolean().refine((val) => val === true, {
+    message: 'You must accept the terms',
+  }),
+});
+
+<FormField
+  control={form.control}
+  name="terms"
+  label="I accept the terms and conditions"
+>
+  <FieldCheckbox />
+</FormField>
+```
+
+### FieldCheckboxGroup
+
+Multiple checkbox options.
+
+```tsx
+import { FieldCheckboxGroup } from '@/components/form/field-checkbox-group';
+
+const schema = z.object({
+  interests: z.array(z.string()).min(1, 'Select at least one'),
+});
+
+const interests = [
+  { label: 'Design', value: 'design' },
+  { label: 'Development', value: 'dev' },
+  { label: 'Marketing', value: 'marketing' },
+];
+
+<FormField
+  control={form.control}
+  name="interests"
+  label="Interests"
+>
+  <FieldCheckboxGroup items={interests} />
+</FormField>
+```
+
+**Props**:
+- `items: Array<{ label: string; value: any; disabled?: boolean }>` - Options (required)
+
+### FieldRadioGroup
+
+Radio button group.
+
+```tsx
+import { FieldRadioGroup } from '@/components/form/field-radio-group';
+
+const schema = z.object({
+  plan: z.enum(['free', 'pro', 'enterprise']),
+});
+
+const plans = [
+  { label: 'Free', value: 'free' },
+  { label: 'Pro', value: 'pro' },
+  { label: 'Enterprise', value: 'enterprise' },
+];
+
+<FormField
+  control={form.control}
+  name="plan"
+  label="Select Plan"
+>
+  <FieldRadioGroup items={plans} />
+</FormField>
+```
+
+**Props**:
+- `items: Array<{ label: string; value: any; disabled?: boolean }>` - Options (required)
+
+## Date Fields
+
+### FieldDate
+
+Date picker field.
+
+```tsx
+import { FieldDate } from '@/components/form/field-date';
+
+const schema = z.object({
+  birthdate: z.date(),
+});
+
+<FormField
+  control={form.control}
+  name="birthdate"
+  label="Birth Date"
+>
+  <FieldDate placeholder="Select date" />
+</FormField>
+```
+
+## Form Composition
+
+### Complete Form Example
+
+```tsx
+import { Form, FormField } from '@/components/form';
+import { FieldText } from '@/components/form/field-text';
+import { FieldSelect } from '@/components/form/field-select';
+import { FieldCheckbox } from '@/components/form/field-checkbox';
+import { Button } from '@/components/ui/button';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+
+const formSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Invalid email address'),
+  role: z.string(),
+  newsletter: z.boolean(),
+});
+
+type FormData = z.infer<typeof formSchema>;
+
+export function UserForm() {
+  const form = useForm<FormData>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      name: '',
+      email: '',
+      role: '',
+      newsletter: false,
+    },
+  });
+
+  const onSubmit = (data: FormData) => {
+    console.log(data);
+  };
+
+  return (
+    <Form form={form} onSubmit={onSubmit}>
+      <FormField
+        control={form.control}
+        name="name"
+        label="Full Name"
+        helper="Enter your full name"
+      >
+        <FieldText placeholder="John Doe" />
+      </FormField>
+
+      <FormField
+        control={form.control}
+        name="email"
+        label="Email"
+      >
+        <FieldText type="email" placeholder="you@example.com" />
+      </FormField>
+
+      <FormField
+        control={form.control}
+        name="role"
+        label="Role"
+      >
+        <FieldSelect
+          items={[
+            { label: 'Developer', value: 'dev' },
+            { label: 'Designer', value: 'design' },
+            { label: 'Manager', value: 'manager' },
+          ]}
+          placeholder="Select role"
+        />
+      </FormField>
+
+      <FormField
+        control={form.control}
+        name="newsletter"
+        label="Subscribe to newsletter"
+      >
+        <FieldCheckbox />
+      </FormField>
+
+      <Button type="submit" loading={form.formState.isSubmitting}>
+        Submit
+      </Button>
+    </Form>
+  );
+}
+```
+
+## FormField Component
+
+The `FormField` wrapper provides:
+
+```tsx
+import { FormField } from '@/components/form';
+
+<FormField
+  control={form.control}     // Required: form control
+  name="fieldName"           // Required: field name
+  label="Field Label"        // Optional: field label
+  helper="Help text"         // Optional: helper text
+  required                   // Optional: shows required indicator
+>
+  <FieldText />              // Field component
+</FormField>
+```
+
+**Props**:
+- `control: Control` - React Hook Form control (required)
+- `name: string` - Field name (required)
+- `label?: ReactNode` - Field label
+- `helper?: ReactNode` - Helper text below field
+- `required?: boolean` - Shows required indicator
+
+## Custom Field Components
+
+Create custom field components following the same pattern:
+
+```tsx
+import { useFormField } from '@/components/form/form-field';
+import { useFormFieldController } from '@/components/form/form-field-controller/context';
+import { FormFieldContainer } from '@/components/form/form-field-container';
+import { FormFieldError } from '@/components/form/form-field-error';
+import { FieldProps } from '@/components/form/types';
+
+export const FieldCustom = (props: FieldProps<CustomProps>) => {
+  const { containerProps, ...rest } = props;
+  const ctx = useFormField();
+  const { field, fieldState } = useFormFieldController();
+
+  return (
+    <FormFieldContainer {...containerProps}>
+      <CustomInput
+        id={ctx.id}
+        aria-invalid={fieldState.invalid ? true : undefined}
+        aria-describedby={ctx.describedBy(fieldState.invalid)}
+        {...rest}
+        {...field}
+      />
+      <FormFieldError />
+    </FormFieldContainer>
+  );
+};
+```
+
+## Field Types Reference
+
+Available field components:
+
+```tsx src/components/form/_fields.tsx
+export const fieldComponents = {
+  text: FieldText,              // Text input
+  textarea: FieldTextarea,      // Multi-line text
+  email: FieldText,             // Email input
+  tel: FieldText,               // Phone input
+  select: FieldSelect,          // Dropdown
+  combobox: FieldCombobox,      // Searchable select
+  'combobox-multiple': FieldComboboxMultiple,  // Multi-select
+  number: FieldNumber,          // Number input
+  otp: FieldOtp,               // OTP input
+  date: FieldDate,             // Date picker
+  checkbox: FieldCheckbox,     // Single checkbox
+  'checkbox-group': FieldCheckboxGroup,  // Multiple checkboxes
+  'radio-group': FieldRadioGroup,        // Radio buttons
+} as const;
+```
+
+## Validation
+
+### Zod Schema Validation
+
+All field components work seamlessly with Zod:
+
+```tsx
+import { z } from 'zod';
+import { zodResolver } from '@hookform/resolvers/zod';
+
+const schema = z.object({
+  email: z.string().email(),
+  age: z.number().min(18).max(120),
+  terms: z.boolean().refine((val) => val === true),
+  tags: z.array(z.string()).min(1),
+});
+
+const form = useForm({
+  resolver: zodResolver(schema),
+});
+```
+
+### Custom Validation
+
+```tsx
+const schema = z.object({
+  password: z.string()
+    .min(8, 'Password must be at least 8 characters')
+    .refine(
+      (val) => /[A-Z]/.test(val),
+      'Password must contain uppercase letter'
+    ),
+  confirmPassword: z.string(),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ['confirmPassword'],
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use TypeScript for type safety">
+    Define form schema with Zod and infer types:
+    
+    ```tsx
+    const schema = z.object({ name: z.string() });
+    type FormData = z.infer<typeof schema>;
+    const form = useForm<FormData>(...);
+    ```
+  </Accordion>
+  
+  <Accordion title="Provide helpful validation messages">
+    ```tsx
+    z.string().min(2, 'Name must be at least 2 characters')
+    ```
+  </Accordion>
+  
+  <Accordion title="Use helper text for guidance">
+    ```tsx
+    <FormField helper="Your email will never be shared">
+      <FieldText type="email" />
+    </FormField>
+    ```
+  </Accordion>
+  
+  <Accordion title="Handle loading states">
+    ```tsx
+    <Button type="submit" loading={form.formState.isSubmitting}>
+      Submit
+    </Button>
+    ```
+  </Accordion>
+  
+  <Accordion title="Reset forms after submission">
+    ```tsx
+    const onSubmit = async (data) => {
+      await saveData(data);
+      form.reset();
+    };
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Related Resources
+
+<CardGroup cols={2}>
+  <Card title="UI Components" href="/components/ui-components" icon="palette">
+    Explore base UI components
+  </Card>
+  <Card title="Forms Guide" href="/guides/forms" icon="shield-check">
+    Learn about form validation
+  </Card>
+  <Card title="React Hook Form" href="https://react-hook-form.com" icon="link">
+    Official React Hook Form docs
+  </Card>
+  <Card title="Zod" href="https://zod.dev" icon="link">
+    Zod schema validation library
+  </Card>
+</CardGroup>

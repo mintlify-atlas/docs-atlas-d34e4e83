@@ -1,0 +1,134 @@
+---
+title: Deployment Overview
+description: Overview of deployment options and requirements for Start UI [web]
+---
+
+Start UI [web] is a full-stack TypeScript application built with TanStack Start, React, and Prisma. This section covers everything you need to deploy your application to production.
+
+## Deployment Requirements
+
+Before deploying Start UI [web], ensure you have:
+
+- **Node.js** >= 22
+- **PostgreSQL** database (local or managed)
+- **S3-compatible storage** (MinIO, AWS S3, etc.) for file uploads
+- **SMTP server** for email delivery
+
+## Deployment Process
+
+Deploying Start UI [web] involves these key steps:
+
+1. **Configure Environment** - Set up production environment variables
+2. **Database Setup** - Configure PostgreSQL connection and run migrations
+3. **Build Application** - Create optimized production build
+4. **Start Server** - Run the production server
+
+## Deployment Options
+
+### Traditional Hosting
+
+Deploy to any Node.js hosting platform:
+
+- VPS (Digital Ocean, Linode, etc.)
+- Platform as a Service (Heroku, Railway, Render)
+- Cloud providers (AWS EC2, Google Cloud, Azure)
+
+**Pros:**
+- Full control over infrastructure
+- Predictable pricing
+- Easy to debug and monitor
+
+**Cons:**
+- Requires manual scaling
+- Infrastructure management overhead
+
+### Docker Deployment
+
+While Start UI [web] doesn't include a production Dockerfile, you can containerize the application for deployment on:
+
+- Docker Swarm
+- Kubernetes
+- Cloud container services (ECS, Cloud Run, etc.)
+
+**Pros:**
+- Consistent environments
+- Easy scaling
+- Infrastructure as code
+
+**Cons:**
+- Additional complexity
+- Container orchestration required
+
+### Serverless/Edge
+
+TanStack Start supports deployment to serverless platforms:
+
+- Vercel
+- Netlify
+- Cloudflare Workers
+
+**Pros:**
+- Automatic scaling
+- Pay per use
+- Global CDN
+
+**Cons:**
+- Cold starts
+- Platform-specific limitations
+- May require adapter configuration
+
+## Required External Services
+
+### PostgreSQL Database
+
+You'll need a PostgreSQL database. Options include:
+
+- **Managed services**: Supabase, Neon, Railway, AWS RDS, Google Cloud SQL
+- **Self-hosted**: Docker container, VPS installation
+
+### S3-Compatible Storage
+
+For file uploads and storage:
+
+- **AWS S3**: Industry standard, global availability
+- **MinIO**: Self-hosted S3-compatible storage
+- **Cloudflare R2**: S3-compatible with no egress fees
+- **Backblaze B2**: Cost-effective alternative
+
+### Email Service
+
+For authentication and notifications:
+
+- **Transactional email services**: SendGrid, Mailgun, Postmark, AWS SES
+- **SMTP providers**: Any SMTP-compatible service
+
+## Environment Differences
+
+### Development
+
+- Uses Docker Compose for local services (PostgreSQL, MinIO, Maildev)
+- Hot module reloading
+- Development tools enabled
+- Email caught by Maildev
+
+### Production
+
+- Optimized build with tree-shaking
+- Environment variables from secure sources
+- Managed database and storage services
+- Real email delivery
+- Logging and monitoring enabled
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Build" icon="hammer" href="/deployment/production-build">
+    Learn how to build and start your production application
+  </Card>
+  <Card title="Environment Setup" icon="gear" href="/deployment/environment-setup">
+    Configure production environment variables
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/deployment/docker">
+    Use Docker for development and testing
+  </Card>
+</CardGroup>

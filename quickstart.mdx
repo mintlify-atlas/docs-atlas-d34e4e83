@@ -1,80 +1,302 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get your Start UI [web] application running in minutes
 ---
 
-## Get started in three steps
+## Get Started in 5 Minutes
 
-Get your documentation site running locally and make your first customization.
+This guide will help you create and run your first Start UI [web] application quickly.
 
-### Step 1: Set up your local environment
+<Steps>
+  <Step title="Create Your Project">
+    Use the official CLI to scaffold a new project:
 
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
-    
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    ```bash
+    pnpm create start-ui -t web myApp
+    ```
 
-### Step 2: Deploy your changes
+    This creates a new directory `myApp` with the latest version of Start UI [web].
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+    <Note>
+      Make sure you have Node.js 22 or later and pnpm installed on your system.
+    </Note>
+  </Step>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+  <Step title="Navigate to Your Project">
+    ```bash
+    cd myApp
+    ```
+  </Step>
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+  <Step title="Configure Environment Variables">
+    Copy the example environment file and update it:
 
-### Step 3: Go live
+    ```bash
+    cp .env.example .env
+    ```
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+    The default values work for local development. The most important variable to update is `AUTH_SECRET`:
 
-## Next steps
+    ```bash .env
+    # Generate a secure secret for authentication
+    AUTH_SECRET="your-secret-key-here"
+    ```
 
-Now that you have your docs running, explore these key features:
+    <Tip>
+      Generate a secure secret using Better Auth CLI:
+      ```bash
+      npx @better-auth/cli@latest secret
+      ```
+    </Tip>
+
+    <Accordion title="Key environment variables">
+      - `VITE_PORT`: Development server port (default: 3000)
+      - `DATABASE_URL`: PostgreSQL connection string
+      - `AUTH_SECRET`: Secret key for authentication (required)
+      - `GITHUB_CLIENT_ID` & `GITHUB_CLIENT_SECRET`: For GitHub OAuth (optional)
+      - `DOCKER_DATABASE_PORT`: PostgreSQL port (default: 5432)
+      - `DOCKER_MINIO_UI_PORT`: MinIO admin UI port (default: 9001)
+      - `DOCKER_MAILDEV_UI_PORT`: Email testing UI port (default: 1080)
+    </Accordion>
+  </Step>
+
+  <Step title="Install Dependencies">
+    ```bash
+    pnpm install
+    ```
+
+    This installs all required packages and runs post-install scripts to generate Prisma client and build info.
+  </Step>
+
+  <Step title="Start Docker Services">
+    Start PostgreSQL, MinIO, and Maildev using Docker:
+
+    ```bash
+    pnpm dk:init
+    ```
+
+    This command starts Docker containers with the `--profile init` flag, which includes the initial bucket setup for MinIO.
+
+    <Warning>
+      **Don't have Docker?** You can use an external PostgreSQL database instead. Update the `DATABASE_URL` in your `.env` file and skip this step.
+    </Warning>
+  </Step>
+
+  <Step title="Initialize Database">
+    Push the Prisma schema and seed the database:
+
+    ```bash
+    pnpm db:init
+    ```
+
+    This runs two commands:
+    - `pnpm db:push` - Creates database tables from your Prisma schema
+    - `pnpm db:seed` - Populates the database with sample data
+
+    <Accordion title="What gets seeded?">
+      The seed script creates:
+      - Demo admin user: `admin@start-ui.com` (password: `000000`)
+      - Demo regular user: `user@start-ui.com` (password: `000000`)
+      - Sample books with genres
+      - Example data for testing features
+    </Accordion>
+  </Step>
+
+  <Step title="Start Development Server">
+    Run the development server:
+
+    ```bash
+    pnpm dev
+    ```
+
+    Your application will be available at:
+    ```
+    http://localhost:3000
+    ```
+
+    <Note>
+      The `dev` command runs multiple processes in parallel:
+      - Vite development server
+      - Environment variable validation
+      - Build info generation
+    </Note>
+  </Step>
+</Steps>
+
+## What's Running?
+
+Once everything is started, you have access to:
 
 <CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
+  <Card title="Main Application" icon="browser" href="http://localhost:3000">
+    Your Start UI [web] app with authentication, dashboard, and features
+  </Card>
+  <Card title="Maildev" icon="envelope" href="http://localhost:1080">
+    Email testing interface - all emails sent during development appear here
+  </Card>
+  <Card title="MinIO Console" icon="database" href="http://localhost:9001">
+    S3-compatible storage admin (login: `minioadmin` / `minioadmin`)
+  </Card>
+  <Card title="Storybook" icon="book">
+    Component library (run `pnpm storybook` to start on port 6006)
+  </Card>
 </CardGroup>
 
+## Login to Your App
+
+You can log in using the seeded demo accounts:
+
+<CodeGroup>
+```bash Admin Account
+Email: admin@start-ui.com
+OTP Code: 000000 (in development)
+```
+
+```bash Regular User
+Email: user@start-ui.com  
+OTP Code: 000000 (in development)
+```
+</CodeGroup>
+
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+  In development mode, the email OTP code is mocked to `000000` for convenience. In production, real OTP codes are generated and sent via email.
 </Note>
+
+## Explore Key Features
+
+### OpenAPI Documentation
+
+View auto-generated API documentation:
+```
+http://localhost:3000/api/openapi/app
+```
+
+This interactive interface lets you:
+- Browse all backend endpoints
+- Test API calls directly from the browser
+- View request/response schemas
+
+### Email Templates
+
+Preview email templates in your browser:
+```
+http://localhost:3000/api/dev/email/login-code
+```
+
+You can also preview with different languages:
+```
+http://localhost:3000/api/dev/email/login-code?language=fr
+```
+
+### Database UI
+
+Open Prisma Studio to view and edit database records:
+```bash
+pnpm db:ui
+```
+
+Access it at `http://localhost:5555`
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Learn About Features" icon="sparkles" href="/concepts/architecture">
+    Explore authentication, user management, and CRUD operations
+  </Card>
+  <Card title="Configure Your IDE" icon="code" href="/installation">
+    Set up VS Code or Zed for the best development experience
+  </Card>
+  <Card title="Run Tests" icon="flask" href="/guides/testing">
+    Learn how to run unit and E2E tests
+  </Card>
+  <Card title="Build for Production" icon="rocket" href="/deployment/production-build">
+    Deploy your application to production
+  </Card>
+</CardGroup>
+
+## Common Commands
+
+Here are the most frequently used commands:
+
+```bash
+# Development
+pnpm dev              # Start dev server
+pnpm db:ui            # Open Prisma Studio
+pnpm storybook        # Start Storybook
+
+# Docker
+pnpm dk:start         # Start Docker containers
+pnpm dk:stop          # Stop Docker containers
+pnpm dk:clear         # Remove containers and volumes
+
+# Database
+pnpm db:push          # Push schema changes
+pnpm db:seed          # Seed database
+
+# Testing
+pnpm test             # Run unit tests
+pnpm test:ui          # Open Vitest UI
+pnpm e2e:ui           # Open Playwright UI
+
+# Code Quality
+pnpm lint             # Run linters
+pnpm pretty           # Format code
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Port already in use">
+    If port 3000 is already in use, change the `VITE_PORT` in your `.env` file:
+    ```bash
+    VITE_PORT=3001
+    ```
+    Also update `VITE_BASE_URL`:
+    ```bash
+    VITE_BASE_URL="http://localhost:3001"
+    ```
+  </Accordion>
+
+  <Accordion title="Docker containers won't start">
+    Make sure Docker is running and the ports aren't already in use:
+    ```bash
+    # Check if containers are running
+    docker ps
+    
+    # Stop all containers and remove volumes
+    pnpm dk:clear
+    
+    # Start fresh
+    pnpm dk:init
+    ```
+  </Accordion>
+
+  <Accordion title="Database connection error">
+    Ensure PostgreSQL is running:
+    ```bash
+    # Check container status
+    docker ps | grep postgres
+    
+    # View container logs
+    docker compose logs postgres
+    ```
+    
+    Verify your `DATABASE_URL` in `.env` matches your PostgreSQL configuration.
+  </Accordion>
+
+  <Accordion title="Prisma schema errors">
+    If you encounter Prisma-related errors:
+    ```bash
+    # Regenerate Prisma client
+    pnpm gen:prisma
+    
+    # Reset database (warning: deletes all data)
+    pnpm db:push --force-reset
+    pnpm db:seed
+    ```
+  </Accordion>
+</AccordionGroup>
+
+<Card title="Need More Help?" icon="circle-question" href="/installation">
+  Check the detailed installation guide for more configuration options and troubleshooting
+</Card>

@@ -1,0 +1,158 @@
+---
+title: Introduction
+description: A production-ready React starter with TanStack Start, TypeScript, and modern tooling
+---
+
+<img
+  className="block dark:hidden"
+  src="https://raw.githubusercontent.com/BearStudio/start-ui-web/main/.github/assets/thumbnail.png"
+  alt="Start UI [web] Hero Light"
+/>
+<img
+  className="hidden dark:block"
+  src="https://raw.githubusercontent.com/BearStudio/start-ui-web/main/.github/assets/thumbnail.png"
+  alt="Start UI [web] Hero Dark"
+/>
+
+## What is Start UI [web]?
+
+Start UI [web] is an opinionated frontend starter repository created and maintained by the [BearStudio Team](https://www.bearstudio.fr/team). It represents their up-to-date stack for building modern web applications with a focus on developer experience, type safety, and production readiness.
+
+This starter comes with authentication, database integration, a comprehensive UI component library, email templates, testing infrastructure, and deployment configurations out of the box.
+
+## Key Features
+
+<CardGroup cols={2}>
+  <Card title="Type-Safe Full Stack" icon="shield-check">
+    End-to-end type safety with TypeScript, Prisma ORM, and oRPC for seamless client-server communication
+  </Card>
+  <Card title="Modern React Stack" icon="react">
+    Built on TanStack Start with React 19, React Query, and React Router for optimal performance
+  </Card>
+  <Card title="Authentication Ready" icon="key">
+    Complete auth system with Better Auth supporting email OTP, GitHub OAuth, and admin permissions
+  </Card>
+  <Card title="Beautiful UI Components" icon="palette">
+    Pre-built components with shadcn/ui and Tailwind CSS v4, plus Storybook for component development
+  </Card>
+  <Card title="Form Management" icon="list-check">
+    React Hook Form with Zod validation for type-safe, accessible forms
+  </Card>
+  <Card title="Testing Infrastructure" icon="flask">
+    Comprehensive testing with Vitest for unit tests and Playwright for E2E tests
+  </Card>
+  <Card title="Email System" icon="envelope">
+    React Email templates with development preview and Maildev for local testing
+  </Card>
+  <Card title="File Uploads" icon="cloud-arrow-up">
+    Better Upload integration with MinIO S3-compatible storage
+  </Card>
+</CardGroup>
+
+## Technology Stack
+
+Start UI [web] leverages the latest and most reliable technologies:
+
+### Core Framework
+- **[TanStack Start](https://tanstack.com/start)** - Full-stack React framework with file-based routing
+- **[React 19](https://react.dev/)** - Latest React with React Compiler support
+- **[TypeScript](https://www.typescriptlang.org/)** - Full type safety across the stack
+- **[Node.js 22+](https://nodejs.org)** - Modern Node.js runtime
+
+### Backend & Data
+- **[Prisma](https://www.prisma.io/)** - Next-generation ORM for PostgreSQL
+- **[oRPC](https://orpc.unnoq.com/)** - Type-safe RPC framework with OpenAPI support
+- **[Better Auth](https://www.better-auth.com/)** - Flexible authentication library
+- **[PostgreSQL](https://www.postgresql.org/)** - Robust relational database
+
+### UI & Styling
+- **[Tailwind CSS v4](https://tailwindcss.com/)** - Utility-first CSS framework
+- **[shadcn/ui](https://ui.shadcn.com/)** - Re-usable component library
+- **[Lucide Icons](https://lucide.dev/)** - Beautiful icon set
+- **[next-themes](https://github.com/pacocoursey/next-themes)** - Dark mode support
+
+### Developer Experience
+- **[Storybook](https://storybook.js.org/)** - Component development and documentation
+- **[Vitest](https://vitest.dev/)** - Fast unit testing
+- **[Playwright](https://playwright.dev/)** - Reliable E2E testing
+- **[ESLint](https://eslint.org/)** - Code quality and consistency
+- **[Prettier](https://prettier.io/)** - Code formatting
+- **[Lefthook](https://github.com/evilmartians/lefthook)** - Fast Git hooks
+
+### Infrastructure
+- **[Docker](https://www.docker.com/)** - Containerized development environment
+- **[MinIO](https://min.io/)** - S3-compatible object storage
+- **[Maildev](https://maildev.github.io/maildev/)** - Email testing in development
+
+## Requirements
+
+Before you begin, ensure you have the following installed:
+
+- **Node.js** >= 22
+- **pnpm** package manager
+- **Docker** (or a PostgreSQL database)
+
+<Note>
+  Start UI [web] uses pnpm for package management. Make sure you have it installed globally:
+  ```bash
+  npm install -g pnpm
+  ```
+</Note>
+
+## Quick Start
+
+Get started with Start UI [web] in seconds:
+
+```bash
+pnpm create start-ui -t web myApp
+```
+
+This command scaffolds a new project with the latest version of Start UI [web].
+
+<Card title="Next Steps" icon="rocket" href="/quickstart">
+  Follow our quickstart guide to set up your development environment and run your first app
+</Card>
+
+## What's Included
+
+Your new Start UI [web] project includes:
+
+- **Authentication flows**: Login, signup, email verification, and logout
+- **User management**: Admin panel with user roles and permissions
+- **Dashboard**: Sample dashboard with data visualization
+- **CRUD examples**: Book management feature demonstrating best practices
+- **Form components**: Validated forms with error handling
+- **File uploads**: Image and file upload with preview
+- **Email templates**: Transactional email templates with i18n
+- **API documentation**: Auto-generated OpenAPI docs
+- **Internationalization**: Multi-language support (English and French)
+- **Dark mode**: Automatic and manual theme switching
+- **Responsive design**: Mobile-first responsive layouts
+
+## Use Cases
+
+Start UI [web] is perfect for:
+
+- **SaaS applications**: User authentication, subscriptions, and dashboards
+- **Admin panels**: Data management with CRUD operations
+- **Internal tools**: Business applications with user management
+- **MVPs**: Rapid prototyping with production-ready code
+- **Client projects**: Professional starting point for web applications
+
+## Community
+
+Start UI [web] is maintained by BearStudio and the open-source community:
+
+- **GitHub**: [BearStudio/start-ui-web](https://github.com/BearStudio/start-ui-web)
+- **Issues**: Report bugs and request features
+- **Contributions**: Pull requests are welcome
+- **License**: MIT
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="bolt" href="/quickstart">
+    Get your app running in 5 minutes
+  </Card>
+  <Card title="Installation" icon="download" href="/installation">
+    Detailed setup and configuration guide
+  </Card>
+</CardGroup>

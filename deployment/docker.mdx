@@ -1,0 +1,382 @@
+---
+title: Docker Setup
+description: Using Docker and Docker Compose for local development
+---
+
+Start UI [web] uses Docker Compose to run local development services including PostgreSQL, MinIO (S3-compatible storage), and Maildev (email testing).
+
+<Note>
+The Docker setup is primarily for **development purposes**. For production deployment, use managed services or configure your own infrastructure.
+</Note>
+
+## Docker Services
+
+The `docker-compose.yml` file defines four services:
+
+### PostgreSQL Database
+
+**Image:** `postgres:16.1`
+
+A PostgreSQL database for local development.
+
+**Ports:**
+- `5432` (configurable via `DOCKER_DATABASE_PORT`)
+
+**Environment Variables:**
+```bash
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+```
+
+**Connection String:**
+```
+DATABASE_URL="postgres://startui:startui@localhost:5432/startui"
+```
+
+**Health Check:**
+- Checks if PostgreSQL is ready using `pg_isready`
+- Interval: 10s, Timeout: 5s, Retries: 5
+
+### MinIO (S3-Compatible Storage)
+
+**Image:** `minio/minio:RELEASE.2025-07-23T15-54-02Z-cpuv1`
+
+MinIO provides S3-compatible object storage for file uploads.
+
+**Ports:**
+- `9000` - API endpoint (configurable via `DOCKER_MINIO_API_PORT`)
+- `9001` - Web UI (configurable via `DOCKER_MINIO_UI_PORT`)
+
+**Environment Variables:**
+```bash
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+```
+
+**S3 Configuration:**
+```bash
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:9000"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://127.0.0.1:9000/default"
+```
+
+**Access MinIO UI:**
+- URL: http://localhost:9001
+- Username: `minioadmin`
+- Password: `minioadmin`
+
+**Health Check:**
+- Uses MinIO Client (`mc ready local`)
+- Interval: 5s, Timeout: 5s, Retries: 5
+
+### Maildev (Email Testing)
+
+**Image:** `maildev/maildev:2.2.1`
+
+Maildev catches all emails sent from the application during development.
+
+**Ports:**
+- `1025` - SMTP server (configurable via `DOCKER_MAILDEV_SMTP_PORT`)
+- `1080` - Web UI (configurable via `DOCKER_MAILDEV_UI_PORT`)
+
+**Environment Variables:**
+```bash
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+EMAIL_FROM="Start UI <noreply@example.com>"
+```
+
+**Access Maildev UI:**
+- URL: http://localhost:1080
+- View all emails sent by the application
+
+**Health Check:**
+- Checks `/healthz` endpoint
+- Interval: 5s, Timeout: 5s, Retries: 5
+
+### CreateBucket (Initialization)
+
+**Image:** `minio/mc:RELEASE.2025-08-13T08-35-41Z-cpuv1`
+
+A one-time initialization service that configures MinIO:
+
+1. Creates an alias for the MinIO server
+2. Adds a user with the configured access key and secret
+3. Attaches the `readwrite` policy to the user
+4. Creates the default bucket if it doesn't exist
+5. Sets anonymous download policy on the bucket
+
+**Profile:** `init` (only runs with `docker compose --profile init up`)
+
+**Dependencies:**
+- Waits for MinIO to be healthy before running
+
+**Network:** Uses MinIO's network mode for direct communication
+
+## Docker Commands
+
+Start UI [web] provides convenient npm scripts for managing Docker services:
+
+### Initialize Services
+
+Run this on first setup to start all services and initialize MinIO bucket:
+
+```bash
+pnpm dk:init
+```
+
+This runs:
+```bash
+docker compose --profile init up -d
+```
+
+**What it does:**
+- Starts PostgreSQL, MinIO, and Maildev services
+- Runs the `createbucket` service to initialize MinIO
+- All services run in detached mode (`-d`)
+
+### Start Services
+
+Start existing services:
+
+```bash
+pnpm dk:start
+```
+
+This runs:
+```bash
+docker compose start
+```
+
+### Stop Services
+
+Stop running services without removing containers:
+
+```bash
+pnpm dk:stop
+```
+
+This runs:
+```bash
+docker compose stop
+```
+
+### Clear Services
+
+Stop and remove all containers and volumes:
+
+```bash
+pnpm dk:clear
+```
+
+This runs:
+```bash
+docker compose down --volumes
+```
+
+<Warning>
+This command will **delete all data** in your local PostgreSQL database and MinIO storage. Use with caution!
+</Warning>
+
+## Complete Setup Workflow
+
+For a fresh installation:
+
+```bash
+# 1. Copy environment variables
+cp .env.example .env
+
+# 2. Install dependencies
+pnpm install
+
+# 3. Start Docker services and initialize
+pnpm dk:init
+
+# 4. Initialize database schema and seed data
+pnpm db:init
+
+# 5. Start development server
+pnpm dev
+```
+
+## Volumes
+
+Docker Compose creates named volumes for data persistence:
+
+### MinIO Volume
+
+```yaml
+volumes:
+  minio:
+```
+
+Stores MinIO data persistently across container restarts. Located at `/data/minio` inside the container.
+
+**Note:** PostgreSQL data is stored in the container and will be lost when using `dk:clear`. For persistent database data, you can add a named volume for PostgreSQL.
+
+## Networking
+
+All services run on the default Docker network and expose ports to localhost:
+
+- PostgreSQL: `localhost:5432`
+- MinIO API: `localhost:9000`
+- MinIO UI: `localhost:9001`
+- Maildev SMTP: `localhost:1025`
+- Maildev UI: `localhost:1080`
+
+The application connects to these services via `localhost` or `127.0.0.1`.
+
+## Production Considerations
+
+<Warning>
+The Docker Compose setup is **NOT recommended for production** use. It's designed for local development only.
+</Warning>
+
+For production:
+
+1. **PostgreSQL**: Use managed database services (Supabase, Neon, AWS RDS, etc.)
+2. **MinIO/S3**: Use AWS S3, Cloudflare R2, or managed MinIO
+3. **Email**: Use transactional email services (SendGrid, Mailgun, AWS SES, etc.)
+
+See [Environment Setup](/deployment/environment-setup) for production configuration.
+
+## Troubleshooting
+
+### Services Won't Start
+
+**Check if ports are already in use:**
+```bash
+lsof -i :5432  # PostgreSQL
+lsof -i :9000  # MinIO API
+lsof -i :9001  # MinIO UI
+lsof -i :1025  # Maildev SMTP
+lsof -i :1080  # Maildev UI
+```
+
+Change the port in `.env` if needed:
+```bash
+DOCKER_DATABASE_PORT="5433"
+DOCKER_MINIO_API_PORT="9002"
+# etc.
+```
+
+### Database Connection Errors
+
+**Verify PostgreSQL is running:**
+```bash
+docker compose ps
+```
+
+**Check PostgreSQL logs:**
+```bash
+docker compose logs postgres
+```
+
+**Ensure database is healthy:**
+```bash
+docker compose ps postgres
+# Should show "healthy" status
+```
+
+### MinIO Bucket Not Created
+
+**Run the init profile explicitly:**
+```bash
+pnpm dk:init
+```
+
+**Check createbucket logs:**
+```bash
+docker compose logs createbucket
+```
+
+### Maildev Not Catching Emails
+
+**Verify email server configuration:**
+```bash
+# In .env
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+```
+
+**Check Maildev logs:**
+```bash
+docker compose logs maildev
+```
+
+**Access Maildev UI:**
+Open http://localhost:1080 in your browser
+
+### Reset Everything
+
+If you encounter persistent issues:
+
+```bash
+# Stop and remove everything
+pnpm dk:clear
+
+# Start fresh
+pnpm dk:init
+pnpm db:init
+```
+
+## Custom Docker Configuration
+
+You can modify `docker-compose.yml` for your needs:
+
+### Add PostgreSQL Volume
+
+For persistent database data:
+
+```yaml
+services:
+  postgres:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  minio:
+  postgres_data:  # Add this
+```
+
+### Use Different PostgreSQL Version
+
+```yaml
+services:
+  postgres:
+    image: postgres:15.3  # Change version
+```
+
+### Add pgAdmin
+
+For database management UI:
+
+```yaml
+services:
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    ports:
+      - "5050:80"
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Setup" icon="gear" href="/deployment/environment-setup">
+    Learn about all environment variables
+  </Card>
+  <Card title="Production Build" icon="hammer" href="/deployment/production-build">
+    Build and deploy to production
+  </Card>
+</CardGroup>

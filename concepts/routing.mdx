@@ -1,0 +1,291 @@
+---
+title: Routing
+description: TanStack Start file-based routing patterns and configuration
+---
+
+## Overview
+
+Start UI [web] uses **TanStack Start** with file-based routing for building full-stack React applications. Routes are automatically generated from the `src/routes/` directory structure.
+
+## Router Configuration
+
+The router is configured in `src/router.tsx`:
+
+```tsx src/router.tsx
+import { createRouter } from '@tanstack/react-router';
+
+import { queryClient } from '@/lib/tanstack-query/query-client';
+import { routeTree } from './routeTree.gen';
+
+export function getRouter() {
+  return createRouter({
+    context: {
+      queryClient,
+    },
+    defaultPreload: 'intent',
+    // Since we're using React Query, we don't want loader calls to ever be stale
+    // This will ensure that the loader is always called when the route is preloaded or visited
+    defaultPreloadStaleTime: 0,
+    scrollRestoration: true,
+    routeTree,
+  });
+}
+```
+
+### Key Configuration
+
+- **`context`** - Provides React Query client to all routes
+- **`defaultPreload: 'intent'`** - Preloads routes on hover/focus
+- **`defaultPreloadStaleTime: 0`** - Always fresh data from loaders
+- **`scrollRestoration: true`** - Automatic scroll position management
+
+## File-Based Routing
+
+### Route File Naming
+
+TanStack Start uses a convention-based file structure:
+
+- **`index.tsx`** - Index route (e.g., `/app` → `app/index.tsx`)
+- **`route.tsx`** - Layout route (shared layout for children)
+- **`$param.tsx`** - Dynamic parameter route
+- **`route.lazy.tsx`** - Code-split route component
+
+### Route Structure Example
+
+```
+routes/
+├── __root.tsx              # Root layout (all routes)
+├── index.tsx               # Home page (/)
+├── login/
+│   ├── route.tsx           # Login layout
+│   ├── index.tsx           # Login page (/login)
+│   ├── verify.index.tsx    # Verify page (/login/verify)
+│   └── error.index.tsx     # Error page (/login/error)
+├── app/
+│   ├── route.tsx           # Protected layout
+│   ├── index.tsx           # Dashboard (/app)
+│   ├── account.index.tsx   # Account page (/app/account)
+│   └── books/
+│       ├── index.tsx       # Book list (/app/books)
+│       └── $id.index.tsx   # Book detail (/app/books/:id)
+└── api/
+    ├── rpc.$.ts            # RPC handler (/api/rpc/*)
+    └── auth.$.ts           # Auth handler (/api/auth/*)
+```
+
+## Root Route
+
+The `__root.tsx` defines the application shell:
+
+```tsx src/routes/__root.tsx
+import { createRootRouteWithContext } from '@tanstack/react-router';
+import { QueryClient } from '@tanstack/react-query';
+
+export const Route = createRootRouteWithContext<{
+  queryClient: QueryClient;
+}>()({
+  loader: async () => {
+    // Setup language and theme in SSR to prevent hydration errors
+    if (import.meta.env.SSR) {
+      const { language } = await initSsrApp();
+      i18n.changeLanguage(language);
+    }
+  },
+  notFoundComponent: () => <PageError type="404" />,
+  errorComponent: () => (
+    <RootDocument>
+      <PageError type="error-boundary" />
+    </RootDocument>
+  ),
+  component: RootComponent,
+  head: () => ({
+    meta: [
+      { charSet: 'utf-8' },
+      { name: 'viewport', content: 'width=device-width, initial-scale=1' },
+    ],
+    links: [
+      { rel: 'stylesheet', href: appCss },
+    ],
+  }),
+});
+```
+
+### Root Features
+
+- **SSR setup** - Initialize i18n before rendering
+- **Error handling** - Global 404 and error boundaries
+- **Head management** - Meta tags and links
+- **Context typing** - Type-safe router context
+
+## Layout Routes
+
+Layout routes wrap child routes with shared UI:
+
+```tsx src/routes/app/route.tsx
+import { createFileRoute, Outlet } from '@tanstack/react-router';
+
+export const Route = createFileRoute('/app')({
+  beforeLoad: async ({ context }) => {
+    // Protect routes - redirect if not authenticated
+    const session = await auth.api.getSession({ headers: getRequestHeaders() });
+    if (!session?.user) {
+      throw redirect({ to: '/login' });
+    }
+  },
+  component: () => (
+    <AppLayout>
+      <Outlet /> {/* Child routes render here */}
+    </AppLayout>
+  ),
+});
+```
+
+<Note>
+  Layout routes don't have a path - they're defined by their folder name in the routes directory.
+</Note>
+
+## Page Routes
+
+Simple page routes render a component:
+
+```tsx src/routes/app/books/index.tsx
+import { createFileRoute } from '@tanstack/react-router';
+import { PageBooks } from '@/features/book/app/page-books';
+
+export const Route = createFileRoute('/app/books/')({
+  component: RouteComponent,
+});
+
+function RouteComponent() {
+  return <PageBooks />;
+}
+```
+
+## Dynamic Routes
+
+Dynamic routes use `$param` naming:
+
+```tsx src/routes/app/books/$id.index.tsx
+import { createFileRoute } from '@tanstack/react-router';
+import { PageBookDetail } from '@/features/book/app/page-book-detail';
+
+export const Route = createFileRoute('/app/books/$id')({
+  component: RouteComponent,
+});
+
+function RouteComponent() {
+  const { id } = Route.useParams(); // Type-safe params
+  return <PageBookDetail id={id} />;
+}
+```
+
+## API Routes
+
+API routes handle server-side requests:
+
+```tsx src/routes/api/rpc.$.ts
+import { RPCHandler } from '@orpc/server/fetch';
+import { createFileRoute } from '@tanstack/react-router';
+import { router } from '@/server/router';
+
+const handler = new RPCHandler(router, {
+  plugins: [new CORSPlugin(), new ResponseHeadersPlugin()],
+});
+
+async function handle({ request }: { request: Request }) {
+  const { response } = await handler.handle(request, {
+    prefix: '/api/rpc',
+    context: {},
+  });
+
+  return response ?? new Response('Not Found', { status: 404 });
+}
+
+export const Route = createFileRoute('/api/rpc/$')({
+  server: {
+    handlers: {
+      GET: handle,
+      POST: handle,
+      PUT: handle,
+      PATCH: handle,
+      DELETE: handle,
+    },
+  },
+});
+```
+
+## Route Loaders
+
+Loaders fetch data before rendering (SSR-compatible):
+
+```tsx
+export const Route = createFileRoute('/app/books/$id')({
+  loader: async ({ params, context }) => {
+    // Prefetch data on the server or client
+    await context.queryClient.ensureQueryData(
+      orpc.book.getById.options({ input: { id: params.id } })
+    );
+  },
+  component: RouteComponent,
+});
+```
+
+## Navigation
+
+### Type-Safe Links
+
+```tsx
+import { Link } from '@tanstack/react-router';
+
+<Link 
+  to="/app/books/$id" 
+  params={{ id: book.id }}  // Type-safe params
+  search={{ tab: 'details' }} // Type-safe search params
+>
+  View Book
+</Link>
+```
+
+### Programmatic Navigation
+
+```tsx
+import { useNavigate } from '@tanstack/react-router';
+
+const navigate = useNavigate();
+
+await navigate({
+  to: '/app/books/$id',
+  params: { id: newBook.id },
+});
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep routes thin">
+    Route files should be minimal - delegate to feature components in `features/` directory.
+  </Accordion>
+
+  <Accordion title="Use layouts for shared logic">
+    Authentication checks, data fetching, and UI layouts should be in `route.tsx` files.
+  </Accordion>
+
+  <Accordion title="Leverage type safety">
+    TanStack Router provides full type inference for params, search, and loaders.
+  </Accordion>
+
+  <Accordion title="Preload on intent">
+    The `defaultPreload: 'intent'` setting improves perceived performance by preloading on hover.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="lock" href="/concepts/authentication">
+    Learn how routes are protected with Better Auth
+  </Card>
+  <Card title="API Layer" icon="code" href="/concepts/api-layer">
+    Understand how API routes work with oRPC
+  </Card>
+</CardGroup>

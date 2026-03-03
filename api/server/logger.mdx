@@ -1,0 +1,246 @@
+---
+title: 'logger'
+description: 'Logger configuration using Pino with pretty formatting'
+---
+
+## Overview
+
+The logger module provides a configured Pino logger instance with optional pretty formatting for development. It includes custom formatting for request tracking, user identification, and performance metrics.
+
+## Location
+
+`src/server/logger.ts`
+
+## Exports
+
+### logger
+
+The main Pino logger instance.
+
+```typescript
+import { logger } from '@/server/logger';
+```
+
+**Type:** `pino.Logger`
+
+## Configuration
+
+### Log Levels
+
+The logger respects the `LOGGER_LEVEL` environment variable:
+
+```typescript
+const options: pino.LoggerOptions = { 
+  level: envServer.LOGGER_LEVEL 
+};
+```
+
+**Available levels:** `trace`, `debug`, `info`, `warn`, `error`, `fatal`
+
+### Pretty Formatting
+
+When `LOGGER_PRETTY` is enabled, the logger uses custom formatting:
+
+```typescript
+export const logger = envServer.LOGGER_PRETTY
+  ? pino(options, pretty({ /* custom formatting */ }))
+  : pino(options);
+```
+
+### Custom Fields
+
+The pretty formatter supports these custom fields:
+
+- `requestId`: Request identifier (displayed in gray)
+- `userId`: User identifier (displayed with 👤 icon in cyan)
+- `scope`: Logging scope context (displayed in gray parentheses)
+- `type`: Operation type (displayed in green uppercase)
+- `path`: Request path (displayed in blue)
+- `durationMs`: Operation duration in milliseconds
+- `errorCode`: Error code (displayed in red)
+- `errorMessage`: Error message details
+
+### Pretty Format Output
+
+The message format is:
+
+```
+{userId} {requestId} {type} {path} · {message} {error} {scope} {durationMs}
+```
+
+**Examples:**
+
+```
+👤 user123 abc-def-123 - GET on /api/users · Fetching users (took 45ms)
+🕶️  Anonymous  POST on /api/login · User login attempt
+👤 user456 xyz-789 - · Processing request · [AUTH_ERROR] Invalid token (api) (took 12ms)
+```
+
+## Usage
+
+### Basic Logging
+
+```typescript
+import { logger } from '@/server/logger';
+
+logger.info('Application started');
+logger.debug('Debug information');
+logger.warn('Warning message');
+logger.error('Error occurred');
+logger.fatal('Fatal error');
+```
+
+### With Context Fields
+
+```typescript
+import { logger } from '@/server/logger';
+
+logger.info({
+  requestId: 'abc-123',
+  userId: 'user-456',
+  path: '/api/users',
+  type: 'GET',
+  durationMs: 45,
+}, 'Request completed');
+```
+
+### Request Tracking
+
+```typescript
+import { logger } from '@/server/logger';
+
+const start = performance.now();
+
+// ... handle request
+
+const duration = performance.now() - start;
+
+logger.info({
+  requestId,
+  userId: session?.user?.id,
+  type: request.method,
+  path: request.url,
+  durationMs: Math.round(duration),
+}, 'Request processed');
+```
+
+### Error Logging
+
+```typescript
+import { logger } from '@/server/logger';
+
+try {
+  // ... operation
+} catch (error) {
+  logger.error({
+    requestId,
+    userId,
+    errorCode: 'DATABASE_ERROR',
+    errorMessage: error.message,
+    scope: 'user-service',
+  }, 'Failed to create user');
+}
+```
+
+### Anonymous User Logging
+
+```typescript
+import { logger } from '@/server/logger';
+
+// Without userId, displays "🕶️  Anonymous"
+logger.info({
+  requestId: 'xyz-789',
+  path: '/api/public',
+  type: 'GET',
+}, 'Public endpoint accessed');
+```
+
+### Scoped Logging
+
+```typescript
+import { logger } from '@/server/logger';
+
+logger.info({
+  scope: 'auth-service',
+  userId: 'user-123',
+}, 'User authenticated');
+
+logger.debug({
+  scope: 'email-service',
+}, 'Email sent successfully');
+```
+
+### Child Loggers
+
+```typescript
+import { logger } from '@/server/logger';
+
+// Create a child logger with default context
+const authLogger = logger.child({ scope: 'auth' });
+
+authLogger.info('Login attempt');
+authLogger.error('Authentication failed');
+```
+
+## Field Transformations
+
+When pretty formatting is enabled:
+
+### requestId
+- Displayed in gray with ` - ` suffix
+- Hidden if not provided
+
+### userId
+- Shows `👤 {userId} - ` in cyan when present
+- Shows `🕶️  Anonymous ` in magenta when absent
+
+### scope
+- Displayed as `(scope)` in gray
+- Hidden if not provided
+
+### type
+- Displayed in uppercase green with ` on ` suffix
+- Hidden if not provided
+
+### path
+- Displayed in blue with space suffix
+- Hidden if not provided
+
+### durationMs
+- Displayed as `(took {duration}ms)` in gray
+- Hidden if not provided
+
+### errorCode
+- Displayed as `[{code}]` in red
+- Hidden if not provided
+
+### errorMessage
+- Displayed in black
+- Hidden if not provided
+
+## Environment Variables
+
+- `LOGGER_LEVEL`: Log level (`trace`, `debug`, `info`, `warn`, `error`, `fatal`)
+- `LOGGER_PRETTY`: Enable pretty formatting (boolean)
+
+## Performance Considerations
+
+- Pretty formatting adds overhead and should only be used in development
+- In production, use JSON logging (set `LOGGER_PRETTY=false`) for better performance and log aggregation
+- The logger automatically ignores specified fields in pretty mode to reduce noise
+
+## Ignored Fields in Pretty Mode
+
+These fields are processed but not displayed in the default message:
+
+```typescript
+ignore: 'scope,type,path,pid,hostname,requestId,durationMs,userId,errorCode,errorMessage'
+```
+
+They're still available in the log object for structured logging but don't clutter the formatted output.
+
+## Related
+
+- [auth](/api/server/auth) - Authentication utilities
+- [database](/api/server/database) - Database logging integration
+- [email](/api/server/email) - Email utilities

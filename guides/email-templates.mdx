@@ -1,0 +1,580 @@
+---
+title: Email Templates
+description: Create beautiful, responsive email templates with React Email in Start UI [web]
+---
+
+Start UI [web] uses [React Email](https://react.email/) to build email templates with React components that render to HTML emails.
+
+## Email Setup
+
+### Email Server Configuration
+
+Configure your email server in `.env`:
+
+```bash .env
+# For development (MailDev)
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+EMAIL_FROM="Start UI <noreply@example.com>"
+
+# For production (e.g., SendGrid)
+EMAIL_SERVER="smtp://apikey:YOUR_SENDGRID_API_KEY@smtp.sendgrid.net:587"
+EMAIL_FROM="Your App <noreply@yourapp.com>"
+```
+
+### Email Validation
+
+Environment variables are validated in `src/env/server.ts`:
+
+```typescript src/env/server.ts
+export const envServer = createEnv({
+  server: {
+    EMAIL_SERVER: z.url(),
+    EMAIL_FROM: z.string(),
+  },
+});
+```
+
+## Email Template Structure
+
+### Email Layout Component
+
+The base layout for all emails:
+
+```tsx src/emails/components/email-layout.tsx
+import { Body, Head, Html, Preview } from '@react-email/components';
+import { ReactNode } from 'react';
+import { AVAILABLE_LANGUAGES } from '@/lib/i18n/constants';
+import { styles } from '@/emails/styles';
+
+export const EmailLayout = ({
+  preview,
+  children,
+  language,
+}: {
+  preview: string;
+  children: ReactNode;
+  language: string;
+}) => {
+  return (
+    <Html
+      lang={language}
+      dir={
+        AVAILABLE_LANGUAGES.find(({ key }) => key === language)?.dir ?? 'ltr'
+      }
+    >
+      <Head>
+        <meta name="viewport" content="width=device-width" />
+      </Head>
+      <Preview>{preview}</Preview>
+      <Body style={styles.main}>{children}</Body>
+    </Html>
+  );
+};
+```
+
+### Email Styles
+
+Define reusable styles in `src/emails/styles.ts`:
+
+```typescript src/emails/styles.ts
+import type { CSSProperties } from 'react';
+import { theme } from './theme';
+
+export const styles = {
+  main: {
+    backgroundColor: theme.colors.background,
+    fontFamily: theme.fonts.sans,
+  } as CSSProperties,
+  
+  container: {
+    margin: '0 auto',
+    padding: '20px',
+    maxWidth: '600px',
+  } as CSSProperties,
+  
+  h1: {
+    fontSize: '24px',
+    fontWeight: 'bold',
+    color: theme.colors.text,
+  } as CSSProperties,
+  
+  text: {
+    fontSize: '16px',
+    lineHeight: '24px',
+    color: theme.colors.text,
+  } as CSSProperties,
+  
+  textMuted: {
+    fontSize: '14px',
+    color: theme.colors.textMuted,
+  } as CSSProperties,
+  
+  code: {
+    fontSize: '32px',
+    fontWeight: 'bold',
+    letterSpacing: '8px',
+    textAlign: 'center',
+    padding: '20px',
+    backgroundColor: theme.colors.muted,
+    borderRadius: '8px',
+  } as CSSProperties,
+};
+```
+
+## Creating Email Templates
+
+### Login Code Email
+
+Real example from `src/emails/templates/login-code.tsx`:
+
+```tsx src/emails/templates/login-code.tsx
+import { Container, Heading, Section, Text } from '@react-email/components';
+import i18n from '@/lib/i18n';
+import { EmailFooter } from '@/emails/components/email-footer';
+import { EmailLayout } from '@/emails/components/email-layout';
+import { styles } from '@/emails/styles';
+import { AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES } from '@/features/auth/config';
+
+export const TemplateLoginCode = (props: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  
+  return (
+    <EmailLayout
+      preview={i18n.t('emails:loginCode.preview')}
+      language={props.language}
+    >
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>
+          {i18n.t('emails:loginCode.title')}
+        </Heading>
+        
+        <Section style={styles.section}>
+          <Text style={styles.text}>
+            {i18n.t('emails:loginCode.intro')}
+          </Text>
+          
+          <Text style={styles.code}>{props.code}</Text>
+          
+          <Text style={styles.textMuted}>
+            {i18n.t('emails:loginCode.validityTime', {
+              expiration: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES,
+            })}
+            <br />
+            {i18n.t('emails:loginCode.ignoreHelper')}
+          </Text>
+        </Section>
+        
+        <EmailFooter />
+      </Container>
+    </EmailLayout>
+  );
+};
+
+export default TemplateLoginCode;
+```
+
+### Email Footer Component
+
+```tsx src/emails/components/email-footer.tsx
+import { Hr, Text, Link } from '@react-email/components';
+import { styles } from '@/emails/styles';
+import i18n from '@/lib/i18n';
+
+export const EmailFooter = () => {
+  return (
+    <>
+      <Hr style={styles.hr} />
+      <Text style={styles.footer}>
+        {i18n.t('emails:footer.company')}
+        <br />
+        <Link href={i18n.t('emails:footer.websiteUrl')} style={styles.link}>
+          {i18n.t('emails:footer.website')}
+        </Link>
+      </Text>
+    </>
+  );
+};
+```
+
+## Sending Emails
+
+### Send Email Function
+
+The email sending utility in `src/server/email.ts`:
+
+```typescript src/server/email.ts
+import { render } from '@react-email/render';
+import nodemailer from 'nodemailer';
+import { ReactElement } from 'react';
+import { envServer } from '@/env/server';
+
+const transporter = nodemailer.createTransport(envServer.EMAIL_SERVER);
+
+export async function sendEmail({
+  to,
+  subject,
+  template,
+}: {
+  to: string;
+  subject: string;
+  template: ReactElement;
+}) {
+  const html = await render(template);
+
+  await transporter.sendMail({
+    from: envServer.EMAIL_FROM,
+    to,
+    subject,
+    html,
+  });
+}
+```
+
+### Sending from Better Auth
+
+Integrate with Better Auth's email OTP:
+
+```tsx src/server/auth.tsx
+import { emailOTP } from 'better-auth/plugins';
+import TemplateLoginCode from '@/emails/templates/login-code';
+import { sendEmail } from '@/server/email';
+
+export const auth = betterAuth({
+  plugins: [
+    emailOTP({
+      async sendVerificationOTP({ email, otp, type }) {
+        await match(type)
+          .with('sign-in', async () => {
+            await sendEmail({
+              to: email,
+              subject: i18n.t('emails:loginCode.subject', {
+                lng: getUserLanguage(),
+              }),
+              template: (
+                <TemplateLoginCode 
+                  language={getUserLanguage()} 
+                  code={otp} 
+                />
+              ),
+            });
+          })
+          .exhaustive();
+      },
+    }),
+  ],
+});
+```
+
+## React Email Components
+
+### Available Components
+
+React Email provides components that render to email-compatible HTML:
+
+<CodeGroup>
+
+```tsx Text and Headings
+import { Heading, Text } from '@react-email/components';
+
+<Heading as="h1">Welcome!</Heading>
+<Text>This is a paragraph</Text>
+```
+
+```tsx Links and Buttons
+import { Link, Button } from '@react-email/components';
+
+<Link href="https://example.com">Visit our website</Link>
+
+<Button
+  href="https://example.com/verify"
+  style={{
+    backgroundColor: '#007bff',
+    color: '#fff',
+    padding: '12px 24px',
+    borderRadius: '4px',
+  }}
+>
+  Verify Email
+</Button>
+```
+
+```tsx Images
+import { Img } from '@react-email/components';
+
+<Img
+  src="https://example.com/logo.png"
+  alt="Company Logo"
+  width="120"
+  height="40"
+/>
+```
+
+```tsx Sections and Layout
+import { Container, Section, Row, Column } from '@react-email/components';
+
+<Container>
+  <Section>
+    <Row>
+      <Column>Left content</Column>
+      <Column>Right content</Column>
+    </Row>
+  </Section>
+</Container>
+```
+
+```tsx Dividers
+import { Hr } from '@react-email/components';
+
+<Hr style={{ borderColor: '#e5e5e5', margin: '20px 0' }} />
+```
+
+</CodeGroup>
+
+## Internationalization
+
+### Multi-language Support
+
+Email templates support multiple languages:
+
+```tsx
+export const TemplateWelcome = (props: {
+  language: string;
+  userName: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  
+  return (
+    <EmailLayout
+      preview={i18n.t('emails:welcome.preview')}
+      language={props.language}
+    >
+      <Container>
+        <Heading>
+          {i18n.t('emails:welcome.title', { name: props.userName })}
+        </Heading>
+        <Text>
+          {i18n.t('emails:welcome.body')}
+        </Text>
+      </Container>
+    </EmailLayout>
+  );
+};
+```
+
+### Translation Files
+
+Define email translations in `src/locales/*/emails.json`:
+
+```json src/locales/en/emails.json
+{
+  "loginCode": {
+    "subject": "Your login code",
+    "preview": "Use this code to sign in",
+    "title": "Sign in to your account",
+    "intro": "Use the following code to complete your sign-in:",
+    "validityTime": "This code will expire in {{expiration}} minutes.",
+    "ignoreHelper": "If you didn't request this code, you can safely ignore this email."
+  },
+  "footer": {
+    "company": "© 2024 Your Company",
+    "website": "Visit our website",
+    "websiteUrl": "https://example.com"
+  }
+}
+```
+
+## Testing Emails
+
+### Development with MailDev
+
+Start UI [web] includes MailDev for email testing:
+
+<Steps>
+
+<Step title="Start MailDev">
+
+```bash
+pnpm dk:init
+```
+
+MailDev runs on `http://localhost:1080`
+
+</Step>
+
+<Step title="Send test email">
+
+Trigger an email in your app (e.g., login with OTP)
+
+</Step>
+
+<Step title="View in MailDev">
+
+Open `http://localhost:1080` to see sent emails
+
+</Step>
+
+</Steps>
+
+### Preview Templates
+
+Create preview files for development:
+
+```tsx src/emails/templates/login-code.preview.tsx
+import TemplateLoginCode from './login-code';
+
+export default function Preview() {
+  return (
+    <TemplateLoginCode
+      language="en"
+      code="123456"
+    />
+  );
+}
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use inline styles">
+
+Email clients don't support external CSS. Always use inline styles:
+
+```tsx
+<Text style={{ fontSize: '16px', color: '#333' }}>
+  Content
+</Text>
+```
+
+</Step>
+
+<Step title="Keep templates simple">
+
+Avoid complex layouts. Email clients have limited CSS support:
+
+```tsx
+// Good: Simple layout
+<Container>
+  <Heading>Title</Heading>
+  <Text>Content</Text>
+</Container>
+
+// Avoid: Complex flexbox layouts
+<div style={{ display: 'flex', gap: '20px' }}>
+  {/* Won't work in many email clients */}
+</div>
+```
+
+</Step>
+
+<Step title="Always include preview text">
+
+Preview text appears in email clients before opening:
+
+```tsx
+<EmailLayout preview="Your login code is 123456" language="en">
+  {/* Content */}
+</EmailLayout>
+```
+
+</Step>
+
+<Step title="Use absolute URLs for images">
+
+```tsx
+// Good
+<Img src="https://example.com/logo.png" alt="Logo" />
+
+// Bad
+<Img src="/logo.png" alt="Logo" />
+```
+
+</Step>
+
+<Step title="Test across email clients">
+
+Test your emails in:
+- Gmail
+- Outlook
+- Apple Mail
+- Mobile clients
+
+</Step>
+
+</Steps>
+
+## Common Email Templates
+
+### Welcome Email
+
+```tsx
+export const TemplateWelcome = ({ language, userName }) => {
+  i18n.changeLanguage(language);
+  
+  return (
+    <EmailLayout preview="Welcome to our app!" language={language}>
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>
+          {i18n.t('emails:welcome.title', { name: userName })}
+        </Heading>
+        <Text style={styles.text}>
+          {i18n.t('emails:welcome.intro')}
+        </Text>
+        <Button href="https://app.example.com" style={styles.button}>
+          {i18n.t('emails:welcome.cta')}
+        </Button>
+        <EmailFooter />
+      </Container>
+    </EmailLayout>
+  );
+};
+```
+
+### Password Reset
+
+```tsx
+export const TemplatePasswordReset = ({ language, resetUrl }) => {
+  i18n.changeLanguage(language);
+  
+  return (
+    <EmailLayout preview="Reset your password" language={language}>
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>
+          {i18n.t('emails:passwordReset.title')}
+        </Heading>
+        <Text style={styles.text}>
+          {i18n.t('emails:passwordReset.intro')}
+        </Text>
+        <Button href={resetUrl} style={styles.button}>
+          {i18n.t('emails:passwordReset.cta')}
+        </Button>
+        <Text style={styles.textMuted}>
+          {i18n.t('emails:passwordReset.expiry')}
+        </Text>
+        <EmailFooter />
+      </Container>
+    </EmailLayout>
+  );
+};
+```
+
+### Notification Email
+
+```tsx
+export const TemplateNotification = ({ language, title, message }) => {
+  i18n.changeLanguage(language);
+  
+  return (
+    <EmailLayout preview={title} language={language}>
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>{title}</Heading>
+        <Text style={styles.text}>{message}</Text>
+        <EmailFooter />
+      </Container>
+    </EmailLayout>
+  );
+};
+```

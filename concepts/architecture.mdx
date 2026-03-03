@@ -1,0 +1,163 @@
+---
+title: Architecture
+description: Overview of Start UI [web] architecture, tech stack, and folder structure
+---
+
+## Overview
+
+Start UI [web] is a modern full-stack React application built with cutting-edge technologies for building production-ready web applications. It follows a feature-driven folder structure and leverages type-safety throughout the entire stack.
+
+## Tech Stack
+
+### Core Framework
+
+- **TanStack Start** - Full-stack React framework with file-based routing
+- **React 19** - UI library with latest features
+- **TypeScript** - Type-safe development
+- **Vite** - Fast build tool and dev server
+
+### Backend
+
+- **Better Auth** - Modern authentication library with OAuth and email OTP support
+- **Prisma ORM** - Type-safe database client with PostgreSQL
+- **oRPC** - Type-safe RPC framework for API layer
+- **Pino** - High-performance logging
+
+### Frontend
+
+- **TanStack Router** - Type-safe file-based routing
+- **TanStack Query** - Server state management
+- **React Hook Form** - Form state management
+- **Zod** - Schema validation
+- **Tailwind CSS 4** - Utility-first CSS framework
+
+### Developer Tools
+
+- **Vitest** - Unit and component testing
+- **Playwright** - E2E testing
+- **Storybook** - Component development
+- **ESLint & Prettier** - Code quality and formatting
+
+## Folder Structure
+
+```
+src/
+├── components/          # Reusable UI components
+│   ├── ui/             # Base UI components (buttons, inputs, etc.)
+│   ├── form/           # Form field components
+│   ├── errors/         # Error display components
+│   └── icons/          # Icon components
+│
+├── features/           # Feature-based modules
+│   ├── auth/           # Authentication logic
+│   ├── book/           # Book feature (example)
+│   │   ├── app/        # User-facing pages
+│   │   ├── manager/    # Admin pages
+│   │   └── schema.ts   # Zod schemas
+│   └── user/           # User management
+│
+├── routes/             # TanStack Router file-based routes
+│   ├── __root.tsx      # Root layout component
+│   ├── api/            # API route handlers
+│   │   ├── rpc.$.ts    # oRPC handler endpoint
+│   │   └── auth.$.ts   # Better Auth endpoints
+│   ├── app/            # User-facing routes
+│   └── manager/        # Admin routes
+│
+├── server/             # Server-side code
+│   ├── auth.tsx        # Better Auth configuration
+│   ├── orpc.ts         # oRPC procedures (middleware)
+│   ├── router.ts       # API router definition
+│   ├── routers/        # Individual route handlers
+│   ├── db/             # Prisma client setup
+│   └── logger.ts       # Logging configuration
+│
+├── lib/                # Shared utilities
+│   ├── orpc/           # oRPC client setup
+│   ├── tanstack-query/ # Query client configuration
+│   ├── i18n/           # Internationalization
+│   └── zod/            # Zod utilities
+│
+├── layout/             # Layout components
+│   ├── app/            # User layout
+│   └── manager/        # Admin layout
+│
+├── locales/            # Translation files
+│   ├── en/
+│   ├── fr/
+│   └── sw/
+│
+├── emails/             # Email templates (React Email)
+│   ├── templates/
+│   └── components/
+│
+├── env/                # Environment variable validation
+│   ├── client.ts
+│   └── server.ts
+│
+└── styles/             # Global styles
+    └── app.css
+```
+
+## Feature-Driven Organization
+
+Each feature in the `features/` directory is self-contained with:
+
+- **Page components** - Split into `app/` (user-facing) and `manager/` (admin)
+- **Schemas** - Zod validation schemas
+- **Types** - TypeScript types and interfaces
+- **Utilities** - Feature-specific helpers
+
+### Example: Book Feature
+
+```
+features/book/
+├── app/
+│   ├── page-books.tsx       # Book list page
+│   └── page-book-detail.tsx # Book detail page
+├── manager/
+│   ├── page-book-create.tsx # Create book form
+│   └── page-book-update.tsx # Update book form
+├── book-cover.tsx           # Shared component
+└── schema.ts                # Validation schemas
+```
+
+## Server-Side Architecture
+
+The server layer is organized around oRPC procedures:
+
+1. **Base procedures** (`server/orpc.ts`) - Define middleware chain
+2. **Route handlers** (`server/routers/*`) - Implement business logic
+3. **Router composition** (`server/router.ts`) - Combine all routes
+4. **API endpoint** (`routes/api/rpc.$.ts`) - HTTP handler
+
+## Configuration
+
+<Card title="Environment Variables" icon="gear">
+  Environment variables are validated at build time using `@t3-oss/env-core` in the `env/` directory, ensuring type-safety and required variables are present.
+</Card>
+
+## Key Design Principles
+
+1. **Type Safety** - End-to-end type safety from database to UI
+2. **Feature Isolation** - Features are self-contained modules
+3. **Code Colocation** - Keep related code together
+4. **Separation of Concerns** - Clear boundaries between layers
+5. **Developer Experience** - Fast feedback loops with hot reload
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Routing" icon="route" href="/concepts/routing">
+    Learn about TanStack Start's file-based routing system
+  </Card>
+  <Card title="Authentication" icon="lock" href="/concepts/authentication">
+    Understand Better Auth setup and patterns
+  </Card>
+  <Card title="Database" icon="database" href="/concepts/database">
+    Explore Prisma ORM usage patterns
+  </Card>
+  <Card title="API Layer" icon="code" href="/concepts/api-layer">
+    Deep dive into oRPC type-safe APIs
+  </Card>
+</CardGroup>

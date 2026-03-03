@@ -1,0 +1,638 @@
+---
+title: File Uploads
+description: Handle file uploads with Better Upload and S3-compatible storage in Start UI [web]
+---
+
+Start UI [web] uses [Better Upload](https://better-upload.com/) for file uploads with S3-compatible storage (MinIO for local development).
+
+## Upload Configuration
+
+### Environment Variables
+
+Configure S3 storage in `.env`:
+
+```bash .env
+# S3 Configuration
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:9000"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+
+# Public URL for uploaded files
+VITE_S3_BUCKET_PUBLIC_URL="http://127.0.0.1:9000/default"
+```
+
+### Environment Validation
+
+Validate S3 configuration:
+
+<CodeGroup>
+
+```typescript src/env/server.ts
+export const envServer = createEnv({
+  server: {
+    S3_ACCESS_KEY_ID: z.string(),
+    S3_SECRET_ACCESS_KEY: z.string(),
+    S3_BUCKET_NAME: z.string().default('default'),
+    S3_REGION: z.string().default('auto'),
+    S3_HOST: z.string(),
+    S3_SECURE: z.stringbool().default(true),
+    S3_FORCE_PATH_STYLE: z.stringbool().default(false),
+  },
+});
+```
+
+```typescript src/env/client.ts
+export const envClient = createEnv({
+  clientPrefix: 'VITE_',
+  client: {
+    VITE_S3_BUCKET_PUBLIC_URL: z.url(),
+  },
+});
+```
+
+</CodeGroup>
+
+## S3 Client Setup
+
+Configure the S3 client in `src/server/s3.ts`:
+
+```typescript src/server/s3.ts
+import { S3Client } from '@aws-sdk/client-s3';
+import { envServer } from '@/env/server';
+
+export const s3Client = new S3Client({
+  region: envServer.S3_REGION,
+  endpoint: `${envServer.S3_SECURE ? 'https' : 'http'}://${envServer.S3_HOST}`,
+  credentials: {
+    accessKeyId: envServer.S3_ACCESS_KEY_ID,
+    secretAccessKey: envServer.S3_SECRET_ACCESS_KEY,
+  },
+  forcePathStyle: envServer.S3_FORCE_PATH_STYLE,
+});
+```
+
+## Creating Upload Routes
+
+### Define Upload Route
+
+Create an upload route with Better Upload:
+
+```typescript src/server/upload/book-cover.ts
+import { RejectUpload, route } from '@better-upload/server';
+import i18n from '@/lib/i18n';
+import { auth } from '@/server/auth';
+import { bookCoverAcceptedFileTypes } from '@/features/book/schema';
+
+export const bookCover = route({
+  fileTypes: bookCoverAcceptedFileTypes,
+  maxFileSize: 1024 * 1024 * 100, // 100MB
+  
+  onBeforeUpload: async ({ req, file }) => {
+    // Authenticate user
+    const session = await auth.api.getSession(req);
+    if (!session?.user) {
+      throw new RejectUpload(
+        i18n.t('book:manager.uploadErrors.NOT_AUTHENTICATED')
+      );
+    }
+
+    // Check permissions
+    const canUpload = await auth.api.userHasPermission({
+      body: {
+        userId: session.user.id,
+        permissions: {
+          book: ['create', 'update'],
+        },
+      },
+    });
+
+    if (!canUpload.success) {
+      throw new RejectUpload(
+        i18n.t('book:manager.uploadErrors.UNAUTHORIZED')
+      );
+    }
+
+    // Generate unique file key
+    const fileExtension = file.type.split('/').at(-1) as string;
+    return {
+      objectInfo: {
+        key: `books/${crypto.randomUUID()}.${fileExtension}`,
+      },
+    };
+  },
+});
+```
+
+### Register Upload Routes
+
+```typescript src/server/upload/index.ts
+import { createBetterUpload } from '@better-upload/server';
+import { s3Client } from '@/server/s3';
+import { envServer } from '@/env/server';
+import { bookCover } from './book-cover';
+
+export const betterUpload = createBetterUpload({
+  storage: {
+    type: 's3',
+    client: s3Client,
+    bucket: envServer.S3_BUCKET_NAME,
+  },
+  routes: {
+    bookCover,
+  },
+});
+```
+
+## Upload Components
+
+### UploadButton Component
+
+Use the `UploadButton` component for file uploads:
+
+```tsx
+import { UploadButton } from '@/components/upload/upload-button';
+import { UploadIcon } from 'lucide-react';
+
+export function BookCoverUpload() {
+  const handleSuccess = (file) => {
+    console.log('Uploaded file:', file);
+    // file.key contains the S3 object key
+    // file.url contains the public URL
+  };
+
+  return (
+    <UploadButton
+      uploadRoute="bookCover"
+      inputProps={{
+        accept: 'image/png,image/jpeg,image/gif',
+      }}
+      onSuccess={handleSuccess}
+    >
+      <UploadIcon />
+      Upload Cover
+    </UploadButton>
+  );
+}
+```
+
+### Custom Upload UI
+
+```tsx
+import { useUpload } from '@better-upload/react';
+import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
+
+export function CustomUpload() {
+  const { upload, progress, isUploading } = useUpload({
+    uploadRoute: 'bookCover',
+    onSuccess: (file) => {
+      console.log('Upload complete:', file);
+    },
+    onError: (error) => {
+      console.error('Upload failed:', error);
+    },
+  });
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      upload(file);
+    }
+  };
+
+  return (
+    <div>
+      <input
+        type="file"
+        onChange={handleFileChange}
+        accept="image/*"
+        disabled={isUploading}
+      />
+      
+      {isUploading && (
+        <Progress value={progress} className="mt-2" />
+      )}
+    </div>
+  );
+}
+```
+
+## File Type Validation
+
+### Define Accepted Types
+
+```typescript src/features/book/schema.ts
+export const bookCoverAcceptedFileTypes = [
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+] as const;
+
+export const zBookCover = z.object({
+  coverId: z.string().optional(),
+});
+```
+
+### Client-side Validation
+
+```tsx
+<UploadButton
+  uploadRoute="bookCover"
+  inputProps={{
+    accept: bookCoverAcceptedFileTypes.join(','),
+  }}
+  onError={(error) => {
+    if (error.code === 'INVALID_FILE_TYPE') {
+      toast.error('Please upload a valid image file');
+    }
+  }}
+/>
+```
+
+## Upload Patterns
+
+### With Form Integration
+
+Integrate uploads with React Hook Form:
+
+```tsx
+import { useForm } from 'react-hook-form';
+import { UploadButton } from '@/components/upload/upload-button';
+
+function BookForm() {
+  const form = useForm({
+    defaultValues: {
+      title: '',
+      author: '',
+      coverId: '',
+    },
+  });
+
+  return (
+    <Form {...form} onSubmit={handleSubmit}>
+      <FormField>
+        <FormFieldLabel>Cover Image</FormFieldLabel>
+        <UploadButton
+          uploadRoute="bookCover"
+          onSuccess={(file) => {
+            // Store the file key in the form
+            form.setValue('coverId', file.key);
+          }}
+        >
+          Upload Cover
+        </UploadButton>
+      </FormField>
+
+      {form.watch('coverId') && (
+        <img
+          src={`${envClient.VITE_S3_BUCKET_PUBLIC_URL}/${form.watch('coverId')}`}
+          alt="Cover preview"
+        />
+      )}
+    </Form>
+  );
+}
+```
+
+### Preview Uploaded Images
+
+```tsx
+function ImagePreview({ objectKey }: { objectKey: string }) {
+  const imageUrl = `${envClient.VITE_S3_BUCKET_PUBLIC_URL}/${objectKey}`;
+
+  return (
+    <div className="relative">
+      <img
+        src={imageUrl}
+        alt="Preview"
+        className="rounded-lg"
+      />
+      <Button
+        variant="destructive"
+        size="sm"
+        onClick={() => deleteImage(objectKey)}
+      >
+        Remove
+      </Button>
+    </div>
+  );
+}
+```
+
+### Multiple File Uploads
+
+```tsx
+function MultipleUpload() {
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+
+  return (
+    <div>
+      <UploadButton
+        uploadRoute="bookCover"
+        inputProps={{ multiple: true }}
+        onSuccess={(file) => {
+          setUploadedFiles((prev) => [...prev, file.key]);
+        }}
+      >
+        Upload Multiple Images
+      </UploadButton>
+
+      <div className="grid grid-cols-3 gap-4 mt-4">
+        {uploadedFiles.map((key) => (
+          <ImagePreview key={key} objectKey={key} />
+        ))}
+      </div>
+    </div>
+  );
+}
+```
+
+## Storage Management
+
+### Delete Files
+
+Delete files from S3:
+
+```typescript src/server/upload/delete-file.ts
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client } from '@/server/s3';
+import { envServer } from '@/env/server';
+
+export async function deleteFile(key: string) {
+  await s3Client.send(
+    new DeleteObjectCommand({
+      Bucket: envServer.S3_BUCKET_NAME,
+      Key: key,
+    })
+  );
+}
+```
+
+### List Files
+
+```typescript
+import { ListObjectsV2Command } from '@aws-sdk/client-s3';
+
+export async function listFiles(prefix: string) {
+  const response = await s3Client.send(
+    new ListObjectsV2Command({
+      Bucket: envServer.S3_BUCKET_NAME,
+      Prefix: prefix,
+    })
+  );
+
+  return response.Contents ?? [];
+}
+```
+
+## Local Development with MinIO
+
+### Start MinIO
+
+<Steps>
+
+<Step title="Initialize Docker containers">
+
+```bash
+pnpm dk:init
+```
+
+</Step>
+
+<Step title="Access MinIO Console">
+
+Open `http://localhost:9001` and login with:
+- Username: `minioadmin`
+- Password: `minioadmin`
+
+</Step>
+
+<Step title="Create bucket">
+
+The `default` bucket is created automatically, but you can create additional buckets in the MinIO console.
+
+</Step>
+
+</Steps>
+
+### MinIO Configuration
+
+```bash .env
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+```
+
+## Production Deployment
+
+### AWS S3
+
+```bash .env.production
+S3_BUCKET_NAME="your-production-bucket"
+S3_REGION="us-east-1"
+S3_HOST="s3.amazonaws.com"
+S3_ACCESS_KEY_ID="your-access-key"
+S3_SECRET_ACCESS_KEY="your-secret-key"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+
+VITE_S3_BUCKET_PUBLIC_URL="https://your-bucket.s3.amazonaws.com"
+```
+
+### Cloudflare R2
+
+```bash .env.production
+S3_BUCKET_NAME="your-r2-bucket"
+S3_REGION="auto"
+S3_HOST="your-account-id.r2.cloudflarestorage.com"
+S3_ACCESS_KEY_ID="your-r2-access-key"
+S3_SECRET_ACCESS_KEY="your-r2-secret-key"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+
+VITE_S3_BUCKET_PUBLIC_URL="https://your-r2-public-url.com"
+```
+
+### DigitalOcean Spaces
+
+```bash .env.production
+S3_BUCKET_NAME="your-space-name"
+S3_REGION="nyc3"
+S3_HOST="nyc3.digitaloceanspaces.com"
+S3_ACCESS_KEY_ID="your-spaces-key"
+S3_SECRET_ACCESS_KEY="your-spaces-secret"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+
+VITE_S3_BUCKET_PUBLIC_URL="https://your-space-name.nyc3.digitaloceanspaces.com"
+```
+
+## Security Best Practices
+
+<Steps>
+
+<Step title="Always authenticate uploads">
+
+```typescript
+onBeforeUpload: async ({ req }) => {
+  const session = await auth.api.getSession(req);
+  if (!session?.user) {
+    throw new RejectUpload('Not authenticated');
+  }
+}
+```
+
+</Step>
+
+<Step title="Validate file types and sizes">
+
+```typescript
+route({
+  fileTypes: ['image/png', 'image/jpeg'],
+  maxFileSize: 1024 * 1024 * 5, // 5MB
+})
+```
+
+</Step>
+
+<Step title="Use unique file names">
+
+```typescript
+return {
+  objectInfo: {
+    key: `${folder}/${crypto.randomUUID()}.${extension}`,
+  },
+};
+```
+
+</Step>
+
+<Step title="Implement permissions checks">
+
+```typescript
+const hasPermission = await auth.api.userHasPermission({
+  body: {
+    userId: session.user.id,
+    permissions: { resource: ['upload'] },
+  },
+});
+
+if (!hasPermission.success) {
+  throw new RejectUpload('Unauthorized');
+}
+```
+
+</Step>
+
+</Steps>
+
+## Error Handling
+
+### Handle Upload Errors
+
+```tsx
+<UploadButton
+  uploadRoute="bookCover"
+  onError={(error) => {
+    if (error.code === 'FILE_TOO_LARGE') {
+      toast.error('File is too large. Max size is 5MB.');
+    } else if (error.code === 'INVALID_FILE_TYPE') {
+      toast.error('Invalid file type. Only images are allowed.');
+    } else if (error.code === 'UNAUTHORIZED') {
+      toast.error('You don\'t have permission to upload files.');
+    } else {
+      toast.error('Upload failed. Please try again.');
+    }
+  }}
+/>
+```
+
+### Server-side Error Handling
+
+```typescript
+onBeforeUpload: async ({ req, file }) => {
+  try {
+    // Validation logic
+    const session = await auth.api.getSession(req);
+    if (!session?.user) {
+      throw new RejectUpload('NOT_AUTHENTICATED');
+    }
+  } catch (error) {
+    logger.error('Upload validation failed', { error });
+    throw new RejectUpload('Upload validation failed');
+  }
+}
+```
+
+## Advanced Features
+
+### Image Transformation
+
+Resize or transform images on upload:
+
+```typescript
+import sharp from 'sharp';
+
+onBeforeUpload: async ({ file }) => {
+  const buffer = await file.arrayBuffer();
+  
+  // Resize image
+  const resized = await sharp(Buffer.from(buffer))
+    .resize(800, 600, { fit: 'inside' })
+    .jpeg({ quality: 80 })
+    .toBuffer();
+
+  return {
+    file: new Blob([resized], { type: 'image/jpeg' }),
+    objectInfo: { key: `resized/${crypto.randomUUID()}.jpg` },
+  };
+}
+```
+
+### Direct Upload to Browser
+
+Generate presigned URLs for direct browser uploads:
+
+```typescript
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+
+export async function createPresignedUrl(key: string) {
+  const command = new PutObjectCommand({
+    Bucket: envServer.S3_BUCKET_NAME,
+    Key: key,
+  });
+
+  return await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+}
+```
+
+### Upload Progress Tracking
+
+```tsx
+function UploadWithProgress() {
+  const { upload, progress, isUploading } = useUpload({
+    uploadRoute: 'bookCover',
+  });
+
+  return (
+    <div>
+      <input
+        type="file"
+        onChange={(e) => upload(e.target.files?.[0])}
+      />
+      {isUploading && (
+        <div>
+          <Progress value={progress} />
+          <p>{Math.round(progress)}% uploaded</p>
+        </div>
+      )}
+    </div>
+  );
+}
+```

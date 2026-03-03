@@ -1,0 +1,401 @@
+---
+title: Authentication
+description: Better Auth setup, configuration, and authentication patterns
+---
+
+## Overview
+
+Start UI [web] uses **Better Auth** - a modern, flexible authentication library with built-in support for OAuth providers, email OTP, and session management.
+
+## Better Auth Configuration
+
+The auth system is configured in `src/server/auth.tsx`:
+
+```tsx src/server/auth.tsx
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { admin, emailOTP, openAPI } from 'better-auth/plugins';
+import { db } from '@/server/db';
+
+export const auth = betterAuth({
+  baseURL: {
+    allowedHosts: [
+      new URL(envClient.VITE_BASE_URL).host,
+      ...(envServer.AUTH_ALLOWED_HOSTS ?? []),
+    ],
+  },
+  session: {
+    expiresIn: envServer.AUTH_SESSION_EXPIRATION_IN_SECONDS,
+    updateAge: envServer.AUTH_SESSION_UPDATE_AGE_IN_SECONDS,
+  },
+  trustedOrigins: envServer.AUTH_TRUSTED_ORIGINS,
+  database: prismaAdapter(db, {
+    provider: 'postgresql',
+  }),
+  user: {
+    additionalFields: {
+      onboardedAt: {
+        type: 'date',
+      },
+    },
+  },
+  onAPIError: {
+    throw: true,
+    errorURL: '/login/error',
+  },
+  plugins: [
+    expo(), // Allows Expo native app integration
+    openAPI({
+      disableDefaultReference: true,
+    }),
+    admin({
+      ...permissions, // Role-based permissions
+    }),
+    emailOTP({
+      disableSignUp: !AUTH_SIGNUP_ENABLED,
+      expiresIn: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES * 60,
+      async sendVerificationOTP({ email, otp, type }) {
+        await sendEmail({
+          to: email,
+          subject: i18n.t('emails:loginCode.subject'),
+          template: <TemplateLoginCode code={otp} />,
+        });
+      },
+    }),
+  ],
+});
+```
+
+## Authentication Plugins
+
+### Email OTP
+
+Passwordless authentication via one-time codes:
+
+```tsx
+emailOTP({
+  disableSignUp: !AUTH_SIGNUP_ENABLED,
+  expiresIn: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES * 60,
+  // Mocked code in dev/demo mode
+  ...(import.meta.env.DEV || envClient.VITE_IS_DEMO
+    ? { generateOTP: () => AUTH_EMAIL_OTP_MOCKED }
+    : undefined),
+  async sendVerificationOTP({ email, otp, type }) {
+    await match(type)
+      .with('sign-in', async () => {
+        await sendEmail({
+          to: email,
+          subject: i18n.t('emails:loginCode.subject', {
+            lng: getUserLanguage(),
+          }),
+          template: (
+            <TemplateLoginCode language={getUserLanguage()} code={otp} />
+          ),
+        });
+      })
+      .exhaustive();
+  },
+})
+```
+
+<Note>
+  In development and demo mode, the OTP is set to a predictable value for easier testing.
+</Note>
+
+### OAuth Providers
+
+Social login with GitHub (easily extensible):
+
+```tsx
+socialProviders: {
+  github: {
+    enabled: !!(envServer.GITHUB_CLIENT_ID && envServer.GITHUB_CLIENT_SECRET),
+    clientId: envServer.GITHUB_CLIENT_ID!,
+    clientSecret: envServer.GITHUB_CLIENT_SECRET!,
+    disableImplicitSignUp: !AUTH_SIGNUP_ENABLED,
+  },
+}
+```
+
+### Admin Plugin
+
+Role-based access control with permissions:
+
+```tsx
+admin({
+  ...permissions,
+})
+```
+
+The permissions system is defined in `src/features/auth/permissions.ts`.
+
+## Database Schema
+
+Better Auth uses Prisma models for authentication:
+
+```prisma prisma/schema.prisma
+enum UserRole {
+  user
+  admin
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  role        UserRole?
+  banned      Boolean?
+  banReason   String?
+  banExpires  DateTime?
+  onboardedAt DateTime?
+
+  @@unique([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  impersonatedBy String?
+
+  @@unique([token])
+}
+
+model Account {
+  id                    String    @id @default(cuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+```
+
+## Protecting Routes
+
+Routes are protected using `beforeLoad` in layout routes:
+
+```tsx src/routes/app/route.tsx
+import { createFileRoute, redirect } from '@tanstack/react-router';
+import { getRequestHeaders } from '@tanstack/react-start/server';
+import { auth } from '@/server/auth';
+
+export const Route = createFileRoute('/app')({
+  beforeLoad: async () => {
+    const session = await auth.api.getSession({ 
+      headers: getRequestHeaders() 
+    });
+    
+    if (!session?.user) {
+      throw redirect({ to: '/login' });
+    }
+    
+    return { user: session.user };
+  },
+  component: AppLayout,
+});
+```
+
+## Getting Current User
+
+### In oRPC Procedures
+
+Auth context is automatically injected via middleware:
+
+```tsx src/server/orpc.ts
+const base = os
+  .$context<ResponseHeadersPluginContext>()
+  .use(async ({ next }) => {
+    const session = await auth.api.getSession({ 
+      headers: getRequestHeaders() 
+    });
+
+    return await next({
+      context: {
+        user: session?.user,
+        session: session?.session,
+        db,
+      },
+    });
+  });
+```
+
+Access user in handlers:
+
+```tsx
+export const protectedProcedure = ({ permissions }) =>
+  base.use(async ({ context, next }) => {
+    const { user, session } = context;
+
+    if (!user || !session) {
+      throw new ORPCError('UNAUTHORIZED');
+    }
+
+    // Check permissions
+    const userHasPermission = await auth.api.userHasPermission({
+      body: { userId: user.id, permissions },
+    });
+
+    if (!userHasPermission.success) {
+      throw new ORPCError('FORBIDDEN');
+    }
+
+    return await next({ context: { user, session } });
+  });
+```
+
+### In Client Components
+
+Use the auth client hooks:
+
+```tsx
+import { useSession } from '@/features/auth/hooks';
+
+function MyComponent() {
+  const { data: session } = useSession();
+  
+  if (!session?.user) {
+    return <div>Not logged in</div>;
+  }
+  
+  return <div>Welcome, {session.user.name}!</div>;
+}
+```
+
+## Permission System
+
+Role-based permissions are defined in `src/features/auth/permissions.ts`:
+
+```tsx
+export type Permission = {
+  book?: ('create' | 'read' | 'update' | 'delete')[];
+  user?: ('create' | 'read' | 'update' | 'delete')[];
+};
+
+export const permissions = {
+  defaultRole: 'user',
+  roles: {
+    user: {
+      book: ['read'],
+    },
+    admin: {
+      book: ['create', 'read', 'update', 'delete'],
+      user: ['create', 'read', 'update', 'delete'],
+    },
+  },
+};
+```
+
+### Using Permissions in Procedures
+
+```tsx src/server/routers/book.ts
+export default {
+  create: protectedProcedure({
+    permissions: {
+      book: ['create'],
+    },
+  })
+    .route({ method: 'POST', path: '/books' })
+    .input(zFormFieldsBook())
+    .output(zBook())
+    .handler(async ({ context, input }) => {
+      return await context.db.book.create({
+        data: input,
+      });
+    }),
+};
+```
+
+## Database Hooks
+
+Prevent modifications in demo mode:
+
+```tsx
+databaseHooks: {
+  user: {
+    create: {
+      before: async (user) => {
+        if (envClient.VITE_IS_DEMO) throw new Error('DEMO MODE');
+        return { data: user };
+      },
+    },
+    update: {
+      before: async (user) => {
+        if (envClient.VITE_IS_DEMO) throw new Error('DEMO MODE');
+        return { data: user };
+      },
+    },
+  },
+}
+```
+
+## Authentication Flow
+
+1. **User requests login** - Submit email on login page
+2. **OTP sent** - Better Auth generates and emails code
+3. **User verifies** - Enter OTP code
+4. **Session created** - Better Auth creates session token
+5. **Cookie set** - Session token stored in HTTP-only cookie
+6. **Routes protected** - `beforeLoad` checks session on navigation
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use HTTP-only cookies">
+    Better Auth automatically uses secure, HTTP-only cookies for session tokens, preventing XSS attacks.
+  </Accordion>
+
+  <Accordion title="Protect at the layout level">
+    Place authentication checks in layout routes (`route.tsx`) to protect entire sections.
+  </Accordion>
+
+  <Accordion title="Validate on the server">
+    Always re-validate permissions in API handlers - never trust client-side checks alone.
+  </Accordion>
+
+  <Accordion title="Use database hooks for global rules">
+    Implement rules like demo mode restrictions in database hooks for consistency.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Routing" icon="route" href="/concepts/routing">
+    Learn how routes integrate with authentication
+  </Card>
+  <Card title="API Layer" icon="code" href="/concepts/api-layer">
+    Understand protected procedures with oRPC
+  </Card>
+</CardGroup>

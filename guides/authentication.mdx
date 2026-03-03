@@ -1,0 +1,435 @@
+---
+title: Authentication
+description: Learn how to use Better Auth for email OTP and OAuth authentication in Start UI [web]
+---
+
+Start UI [web] uses [Better Auth](https://better-auth.com/) for authentication, providing both email OTP (one-time password) and OAuth authentication methods.
+
+## Authentication Setup
+
+The authentication system is configured in `src/server/auth.tsx` using Better Auth with Prisma adapter.
+
+### Server Configuration
+
+```tsx src/server/auth.tsx
+import { betterAuth } from 'better-auth';
+import { prismaAdapter } from 'better-auth/adapters/prisma';
+import { admin, emailOTP, openAPI } from 'better-auth/plugins';
+
+export const auth = betterAuth({
+  baseURL: {
+    allowedHosts: [
+      new URL(envClient.VITE_BASE_URL).host,
+      ...(envServer.AUTH_ALLOWED_HOSTS ?? []),
+    ],
+  },
+  session: {
+    expiresIn: envServer.AUTH_SESSION_EXPIRATION_IN_SECONDS,
+    updateAge: envServer.AUTH_SESSION_UPDATE_AGE_IN_SECONDS,
+  },
+  database: prismaAdapter(db, {
+    provider: 'postgresql',
+  }),
+  plugins: [
+    admin({ ...permissions }),
+    emailOTP({
+      disableSignUp: !AUTH_SIGNUP_ENABLED,
+      expiresIn: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES * 60,
+    }),
+  ],
+});
+```
+
+### Client Configuration
+
+Create the auth client in `src/features/auth/client.ts`:
+
+```tsx src/features/auth/client.ts
+import { createAuthClient } from 'better-auth/react';
+import { emailOTPClient, adminClient } from 'better-auth/client/plugins';
+
+export const authClient = createAuthClient({
+  baseURL: typeof window === 'undefined'
+    ? envClient.VITE_BASE_URL
+    : window.location.origin,
+  plugins: [
+    emailOTPClient(),
+    adminClient({ ...permissions }),
+  ],
+});
+```
+
+## Email OTP Authentication
+
+### Login Flow
+
+<Steps>
+
+<Step title="Send verification email">
+
+The user enters their email address and requests a verification code:
+
+```tsx src/features/auth/page-login.tsx
+const submitHandler = async ({ email }) => {
+  const result = await authClient.emailOtp.sendVerificationOtp({
+    email,
+    type: 'sign-in',
+  });
+
+  if (result.error) {
+    toast.error(errorMessage);
+    return;
+  }
+
+  // Navigate to verification page
+  router.navigate({
+    to: '/login/verify',
+    search: { email },
+  });
+};
+```
+
+</Step>
+
+<Step title="Verify OTP code">
+
+The user enters the 6-digit code received via email:
+
+```tsx src/features/auth/page-login-verify.tsx
+const submitHandler = async ({ otp }) => {
+  const { error } = await authClient.signIn.emailOtp({
+    email: search.email,
+    otp,
+  });
+
+  if (error) {
+    toast.error(errorMessage);
+    form.setError('otp', {
+      message: t('auth:common.otp.invalid'),
+    });
+    return;
+  }
+
+  // Refetch session to update guards and redirect
+  session.refetch();
+};
+```
+
+</Step>
+
+<Step title="Session management">
+
+After successful authentication, the session is automatically managed by Better Auth. Access the session in components:
+
+```tsx
+const session = authClient.useSession();
+
+if (session.data?.user) {
+  // User is authenticated
+  console.log(session.data.user.email);
+}
+```
+
+</Step>
+
+</Steps>
+
+### Email Template
+
+The OTP email is sent using React Email templates:
+
+```tsx src/emails/templates/login-code.tsx
+export const TemplateLoginCode = (props: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  return (
+    <EmailLayout
+      preview={i18n.t('emails:loginCode.preview')}
+      language={props.language}
+    >
+      <Container style={styles.container}>
+        <Heading style={styles.h1}>
+          {i18n.t('emails:loginCode.title')}
+        </Heading>
+        <Section style={styles.section}>
+          <Text style={styles.text}>
+            {i18n.t('emails:loginCode.intro')}
+          </Text>
+          <Text style={styles.code}>{props.code}</Text>
+        </Section>
+      </Container>
+    </EmailLayout>
+  );
+};
+```
+
+## OAuth Authentication
+
+### GitHub OAuth
+
+The starter includes GitHub OAuth provider:
+
+```tsx src/features/auth/page-login.tsx
+const social = useMutation({
+  mutationFn: async (provider: 'github') => {
+    const response = await authClient.signIn.social({
+      provider,
+      callbackURL: search.redirect ?? '/',
+      errorCallbackURL: '/login/error',
+    });
+
+    if (response.error) {
+      throw new Error(response.error.message);
+    }
+    return response.data;
+  },
+  onError: (error) => {
+    toast.error(error.message);
+  },
+});
+
+// In your component
+<Button onClick={() => social.mutate('github')}>
+  Login with GitHub
+</Button>
+```
+
+### Environment Variables
+
+Configure OAuth providers in `.env`:
+
+```bash .env
+GITHUB_CLIENT_ID="your_client_id"
+GITHUB_CLIENT_SECRET="your_client_secret"
+```
+
+### Adding More Providers
+
+To add more OAuth providers (Google, Discord, etc.):
+
+<Steps>
+
+<Step title="Update server auth config">
+
+```tsx src/server/auth.tsx
+export const auth = betterAuth({
+  // ... other config
+  socialProviders: {
+    github: { /* ... */ },
+    google: {
+      enabled: !!(envServer.GOOGLE_CLIENT_ID && envServer.GOOGLE_CLIENT_SECRET),
+      clientId: envServer.GOOGLE_CLIENT_ID!,
+      clientSecret: envServer.GOOGLE_CLIENT_SECRET!,
+    },
+  },
+});
+```
+
+</Step>
+
+<Step title="Add environment variables">
+
+```typescript src/env/server.ts
+export const envServer = createEnv({
+  server: {
+    // ... other vars
+    GOOGLE_CLIENT_ID: zOptionalWithReplaceMe(),
+    GOOGLE_CLIENT_SECRET: zOptionalWithReplaceMe(),
+  },
+});
+```
+
+</Step>
+
+<Step title="Update login UI">
+
+```tsx
+<Button onClick={() => social.mutate('google')}>
+  Login with Google
+</Button>
+```
+
+</Step>
+
+</Steps>
+
+## Session Management
+
+### Session Configuration
+
+Session expiration and update settings are configured via environment variables:
+
+```bash .env
+# Session expires after 30 days
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+
+# Session expiration is updated every 1 day
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+```
+
+### Accessing Session Data
+
+<CodeGroup>
+
+```tsx Client Component
+import { authClient } from '@/features/auth/client';
+
+export function MyComponent() {
+  const session = authClient.useSession();
+
+  if (!session.data?.user) {
+    return <div>Not authenticated</div>;
+  }
+
+  return (
+    <div>
+      Welcome {session.data.user.name}!
+      <pre>{JSON.stringify(session.data.user, null, 2)}</pre>
+    </div>
+  );
+}
+```
+
+```tsx Server Side
+import { auth } from '@/server/auth';
+
+export async function getServerSession(req: Request) {
+  const session = await auth.api.getSession(req);
+  
+  if (!session?.user) {
+    throw new Error('Not authenticated');
+  }
+
+  return session.user;
+}
+```
+
+</CodeGroup>
+
+### Logout
+
+Implement logout with confirmation:
+
+```tsx src/features/auth/page-logout.tsx
+import { authClient } from '@/features/auth/client';
+
+export default function PageLogout() {
+  const session = authClient.useSession();
+
+  const handleLogout = async () => {
+    await authClient.signOut();
+    session.refetch();
+  };
+
+  return (
+    <Button onClick={handleLogout}>
+      Sign Out
+    </Button>
+  );
+}
+```
+
+## Route Guards
+
+### Authenticated Routes
+
+Protect routes that require authentication:
+
+```tsx src/features/auth/guard-authenticated.tsx
+import { authClient } from '@/features/auth/client';
+
+export const GuardAuthenticated = ({ children }) => {
+  const session = authClient.useSession();
+  const router = useRouter();
+
+  if (!session.data?.user) {
+    router.navigate({
+      to: '/login',
+      search: { redirect: window.location.pathname },
+    });
+    return null;
+  }
+
+  return children;
+};
+```
+
+### Public Only Routes
+
+Prevent authenticated users from accessing login pages:
+
+```tsx src/features/auth/guard-public-only.tsx
+export const GuardPublicOnly = ({ children }) => {
+  const session = authClient.useSession();
+  const router = useRouter();
+
+  if (session.data?.user) {
+    router.navigate({ to: '/' });
+    return null;
+  }
+
+  return children;
+};
+```
+
+## Permissions
+
+The starter includes a role-based permission system using Better Auth's admin plugin.
+
+### Define Permissions
+
+```typescript src/features/auth/permissions.ts
+export const permissions = {
+  defaultRole: 'user',
+  roles: {
+    user: {
+      book: ['read'],
+    },
+    admin: {
+      book: ['create', 'read', 'update', 'delete'],
+      user: ['create', 'read', 'update', 'delete'],
+    },
+  },
+};
+```
+
+### Check Permissions
+
+```tsx
+const canUpdateBookCover = await auth.api.userHasPermission({
+  body: {
+    userId: session.user.id,
+    permissions: {
+      book: ['create', 'update'],
+    },
+  },
+});
+
+if (!canUpdateBookCover.success) {
+  throw new Error('Unauthorized');
+}
+```
+
+## Development Mode
+
+In development, the OTP code is mocked for easier testing:
+
+```typescript src/features/auth/config.ts
+export const AUTH_EMAIL_OTP_MOCKED = '000000';
+```
+
+The auth configuration automatically uses this mocked code in dev:
+
+```tsx src/server/auth.tsx
+emailOTP({
+  ...(import.meta.env.DEV || envClient.VITE_IS_DEMO
+    ? { generateOTP: () => AUTH_EMAIL_OTP_MOCKED }
+    : undefined),
+})
+```
+
+<Note>
+In development or demo mode, you can always use `000000` as the OTP code for testing.
+</Note>

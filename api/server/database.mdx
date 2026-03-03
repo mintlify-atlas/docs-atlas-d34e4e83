@@ -1,0 +1,191 @@
+---
+title: 'database'
+description: 'Prisma client and database utilities'
+---
+
+## Overview
+
+The database module provides a configured Prisma client instance with custom extensions for server timing and logging.
+
+## Location
+
+`src/server/db/index.ts`
+
+## Exports
+
+### db
+
+The main Prisma client instance with server timing extension.
+
+```typescript
+import { db } from '@/server/db';
+```
+
+**Type:** `PrismaClient` (extended)
+
+## Configuration
+
+### Logging
+
+Logging levels are configured based on the `LOGGER_LEVEL` environment variable:
+
+```typescript
+const levels = {
+  trace: ['query', 'error', 'warn', 'info'],
+  debug: ['error', 'warn', 'info'],
+  info: ['error', 'warn', 'info'],
+  warn: ['error', 'warn'],
+  error: ['error'],
+  fatal: ['error'],
+} satisfies Record<string, ('query' | 'error' | 'warn' | 'info')[]>;
+```
+
+The Prisma client is configured to log based on the current logger level:
+
+```typescript
+new PrismaClient({
+  log: levels[envServer.LOGGER_LEVEL],
+})
+```
+
+### Server Timing Extension
+
+The database client includes a custom Prisma extension that tracks query performance:
+
+```typescript
+.$extends({
+  name: 'server-timing',
+  query: {
+    $allModels: {
+      async $allOperations({ query, args, model, operation }) {
+        const start = performance.now();
+        const result = await query(args);
+        const duration = performance.now() - start;
+
+        const store = timingStore.getStore();
+        if (store) {
+          store.prisma.push({
+            model,
+            operation,
+            duration,
+          });
+        }
+
+        return result;
+      },
+    },
+  },
+})
+```
+
+This extension:
+- Measures the duration of every database query
+- Stores timing information in the `timingStore` for performance monitoring
+- Captures the model, operation type, and duration for each query
+
+### Development Mode
+
+In development mode, the Prisma client is cached globally to prevent multiple instances during hot module reloading:
+
+```typescript
+const globalForPrisma = globalThis as unknown as {
+  prisma: ReturnType<typeof createPrisma> | undefined;
+};
+
+export const db = globalForPrisma.prisma ?? createPrisma();
+
+if (import.meta.env.DEV) globalForPrisma.prisma = db;
+```
+
+## Usage
+
+### Basic Queries
+
+```typescript
+import { db } from '@/server/db';
+
+// Find a user by email
+const user = await db.user.findUnique({
+  where: { email: 'user@example.com' },
+});
+
+// Create a new record
+const newUser = await db.user.create({
+  data: {
+    email: 'user@example.com',
+    name: 'John Doe',
+  },
+});
+
+// Update a record
+const updated = await db.user.update({
+  where: { id: '123' },
+  data: { name: 'Jane Doe' },
+});
+
+// Delete a record
+await db.user.delete({
+  where: { id: '123' },
+});
+```
+
+### Transactions
+
+```typescript
+import { db } from '@/server/db';
+
+const result = await db.$transaction(async (tx) => {
+  const user = await tx.user.create({
+    data: { email: 'user@example.com' },
+  });
+
+  await tx.profile.create({
+    data: {
+      userId: user.id,
+      bio: 'Hello world',
+    },
+  });
+
+  return user;
+});
+```
+
+### Raw Queries
+
+```typescript
+import { db } from '@/server/db';
+
+// Raw query
+const users = await db.$queryRaw`
+  SELECT * FROM "User" WHERE email = ${email}
+`;
+
+// Raw execute
+await db.$executeRaw`
+  UPDATE "User" SET "emailVerified" = NOW() WHERE id = ${userId}
+`;
+```
+
+## Performance Monitoring
+
+All database queries are automatically tracked for performance monitoring. The timing information is stored in `timingStore` and can be used to:
+
+- Identify slow queries
+- Monitor database performance
+- Debug performance issues
+- Generate server timing headers
+
+Each timing entry includes:
+- **model**: The Prisma model being queried (e.g., `User`, `Post`)
+- **operation**: The operation type (e.g., `findMany`, `create`, `update`)
+- **duration**: Query execution time in milliseconds
+
+## Environment Variables
+
+- `LOGGER_LEVEL`: Controls the logging level (`trace`, `debug`, `info`, `warn`, `error`, `fatal`)
+- `DATABASE_URL`: PostgreSQL connection string (used by Prisma)
+
+## Related
+
+- [auth](/api/server/auth) - Uses database for authentication storage
+- [logger](/api/server/logger) - Logging configuration

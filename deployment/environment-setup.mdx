@@ -1,0 +1,721 @@
+---
+title: Environment Configuration
+description: Complete guide to environment variables and production configuration
+---
+
+Start UI [web] uses environment variables for configuration. This guide covers all available variables and how to configure them for different environments.
+
+## Environment Files
+
+Environment variables are stored in `.env` files:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your values
+nano .env
+```
+
+<Warning>
+**Never commit `.env` files to version control!** They contain sensitive credentials. The `.env` file is already in `.gitignore`.
+</Warning>
+
+## Environment Variables Reference
+
+### Application Configuration
+
+#### `VITE_PORT`
+
+**Type:** Number  
+**Default:** `3000`  
+**Required:** No
+
+Port where the development server runs.
+
+```bash
+VITE_PORT=3000
+```
+
+#### `VITE_BASE_URL`
+
+**Type:** String  
+**Required:** Yes
+
+Base URL of your application. Used for OAuth callbacks, email links, etc.
+
+**Development:**
+```bash
+VITE_BASE_URL="http://localhost:3000"
+```
+
+**Production:**
+```bash
+VITE_BASE_URL="https://yourdomain.com"
+```
+
+### Database Configuration
+
+#### `DATABASE_URL`
+
+**Type:** String (PostgreSQL connection string)  
+**Required:** Yes
+
+PostgreSQL database connection URL.
+
+**Development (Docker):**
+```bash
+DATABASE_URL="postgres://startui:startui@localhost:5432/startui"
+```
+
+**Production (example):**
+```bash
+DATABASE_URL="postgresql://user:password@host:5432/database?sslmode=require"
+```
+
+**Format:**
+```
+postgresql://[user]:[password]@[host]:[port]/[database]?[params]
+```
+
+#### Docker Database Variables
+
+Used by Docker Compose to configure the PostgreSQL container:
+
+```bash
+DOCKER_DATABASE_PORT="5432"          # Host port mapping
+DOCKER_DATABASE_NAME="startui"       # Database name
+DOCKER_DATABASE_USERNAME="startui"   # Database user
+DOCKER_DATABASE_PASSWORD="startui"   # Database password
+```
+
+<Note>
+These are only used for local Docker development. In production, use a managed database service and configure `DATABASE_URL` directly.
+</Note>
+
+### Authentication Configuration
+
+#### `AUTH_SECRET`
+
+**Type:** String (64+ character random string)  
+**Required:** Yes
+
+Secret key for encrypting sessions and tokens. **Must be changed in production!**
+
+**Generate a secure secret:**
+```bash
+npx @better-auth/cli@latest secret
+```
+
+**Example:**
+```bash
+AUTH_SECRET="your-super-secure-random-string-here"
+```
+
+<Warning>
+**Never use the default value in production!** Generate a new secret for each environment.
+</Warning>
+
+#### `AUTH_SESSION_EXPIRATION_IN_SECONDS`
+
+**Type:** Number  
+**Default:** `2592000` (30 days)  
+**Required:** No
+
+How long sessions remain valid.
+
+```bash
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000  # 30 days
+```
+
+#### `AUTH_SESSION_UPDATE_AGE_IN_SECONDS`
+
+**Type:** Number  
+**Default:** `86400` (1 day)  
+**Required:** No
+
+How often session expiration is updated.
+
+```bash
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400  # 1 day
+```
+
+#### `AUTH_TRUSTED_ORIGINS`
+
+**Type:** String (comma-separated URLs)  
+**Required:** For mobile apps
+
+Trusted origins for mobile app authentication.
+
+```bash
+AUTH_TRUSTED_ORIGINS="start-ui-native://,start-ui-native://*"
+```
+
+#### `AUTH_ALLOWED_HOSTS`
+
+**Type:** String (comma-separated patterns)  
+**Required:** No
+
+Allowed hosts for dynamic base URL (useful for preview deployments).
+
+```bash
+AUTH_ALLOWED_HOSTS="*.vercel.app,*.netlify.app"
+```
+
+See [Better Auth dynamic base URL docs](https://better-auth.com/docs/concepts/dynamic-base-url).
+
+### OAuth Configuration
+
+#### GitHub OAuth
+
+**Required:** Only if using GitHub login
+
+Create a GitHub OAuth app at https://github.com/settings/developers
+
+```bash
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
+
+**Callback URL:** `{VITE_BASE_URL}/api/auth/callback/github`
+
+### S3/Storage Configuration
+
+For file uploads and storage.
+
+#### `S3_BUCKET_NAME`
+
+**Type:** String  
+**Required:** Yes
+
+Name of the S3 bucket.
+
+```bash
+S3_BUCKET_NAME="default"  # Development
+S3_BUCKET_NAME="my-app-uploads"  # Production
+```
+
+#### `S3_HOST`
+
+**Type:** String  
+**Required:** Yes
+
+S3 endpoint hostname and port.
+
+**Development (MinIO):**
+```bash
+S3_HOST="127.0.0.1:9000"
+```
+
+**Production (AWS S3 us-east-1):**
+```bash
+S3_HOST="s3.amazonaws.com"
+```
+
+**Production (AWS S3 other regions):**
+```bash
+S3_HOST="s3.eu-west-1.amazonaws.com"
+```
+
+**Production (Cloudflare R2):**
+```bash
+S3_HOST="<account-id>.r2.cloudflarestorage.com"
+```
+
+#### `S3_ACCESS_KEY_ID`
+
+**Type:** String  
+**Required:** Yes
+
+S3 access key ID.
+
+```bash
+S3_ACCESS_KEY_ID="startui-access-key"  # Development
+S3_ACCESS_KEY_ID="AKIA..."  # Production (AWS)
+```
+
+#### `S3_SECRET_ACCESS_KEY`
+
+**Type:** String  
+**Required:** Yes
+
+S3 secret access key.
+
+```bash
+S3_SECRET_ACCESS_KEY="startui-secret-key"  # Development
+S3_SECRET_ACCESS_KEY="your-secret-key"  # Production
+```
+
+#### `S3_SECURE`
+
+**Type:** Boolean  
+**Default:** `false`  
+**Required:** No
+
+Use HTTPS for S3 connections.
+
+```bash
+S3_SECURE=false  # Development (MinIO without SSL)
+S3_SECURE=true   # Production (always use HTTPS)
+```
+
+#### `S3_FORCE_PATH_STYLE`
+
+**Type:** Boolean  
+**Default:** `true`  
+**Required:** No
+
+Use path-style URLs instead of virtual-hosted-style.
+
+```bash
+S3_FORCE_PATH_STYLE=true   # MinIO and some S3-compatible services
+S3_FORCE_PATH_STYLE=false  # AWS S3
+```
+
+#### `VITE_S3_BUCKET_PUBLIC_URL`
+
+**Type:** String  
+**Required:** Yes
+
+Public URL for accessing uploaded files.
+
+**Development:**
+```bash
+VITE_S3_BUCKET_PUBLIC_URL="http://127.0.0.1:9000/default"
+```
+
+**Production (AWS S3):**
+```bash
+VITE_S3_BUCKET_PUBLIC_URL="https://my-app-uploads.s3.amazonaws.com"
+```
+
+**Production (CloudFront CDN):**
+```bash
+VITE_S3_BUCKET_PUBLIC_URL="https://d111111abcdef8.cloudfront.net"
+```
+
+#### Docker MinIO Variables
+
+Used by Docker Compose for local MinIO:
+
+```bash
+DOCKER_MINIO_API_PORT="9000"      # API port
+DOCKER_MINIO_UI_PORT="9001"       # Web UI port
+DOCKER_MINIO_USERNAME="minioadmin" # Root username
+DOCKER_MINIO_PASSWORD="minioadmin" # Root password
+```
+
+### Email Configuration
+
+#### `EMAIL_SERVER`
+
+**Type:** String (SMTP URL)  
+**Required:** Yes
+
+SMTP server for sending emails.
+
+**Development (Maildev):**
+```bash
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+```
+
+**Production examples:**
+```bash
+# Gmail
+EMAIL_SERVER="smtp://username:password@smtp.gmail.com:587"
+
+# SendGrid
+EMAIL_SERVER="smtp://apikey:SG.xxx@smtp.sendgrid.net:587"
+
+# AWS SES
+EMAIL_SERVER="smtp://username:password@email-smtp.us-east-1.amazonaws.com:587"
+
+# Mailgun
+EMAIL_SERVER="smtp://postmaster@domain.com:password@smtp.mailgun.org:587"
+```
+
+**Format:**
+```
+smtp://[username]:[password]@[host]:[port]
+```
+
+#### `EMAIL_FROM`
+
+**Type:** String  
+**Required:** Yes
+
+From address for outgoing emails.
+
+```bash
+EMAIL_FROM="Start UI <noreply@example.com>"  # Development
+EMAIL_FROM="Your App <noreply@yourdomain.com>"  # Production
+```
+
+#### Docker Maildev Variables
+
+Used by Docker Compose for local Maildev:
+
+```bash
+DOCKER_MAILDEV_SMTP_PORT="1025"  # SMTP port
+DOCKER_MAILDEV_UI_PORT="1080"    # Web UI port
+```
+
+### Environment Indicator
+
+Display environment information in the UI.
+
+#### `VITE_ENV_NAME`
+
+**Type:** String  
+**Required:** No
+
+Environment name to display.
+
+```bash
+VITE_ENV_NAME="LOCAL"       # Development
+VITE_ENV_NAME="staging"     # Staging
+VITE_ENV_NAME="production"  # Production
+```
+
+#### `VITE_ENV_EMOJI`
+
+**Type:** String (emoji)  
+**Required:** No
+
+Emoji to display next to environment name.
+
+```bash
+VITE_ENV_EMOJI="🚧"  # Development
+VITE_ENV_EMOJI="🔬"  # Staging
+VITE_ENV_EMOJI="🚀"  # Production
+```
+
+#### `VITE_ENV_COLOR`
+
+**Type:** String (Tailwind color)  
+**Required:** No
+
+Color for environment indicator.
+
+```bash
+VITE_ENV_COLOR="gold"   # Development
+VITE_ENV_COLOR="teal"   # Staging
+VITE_ENV_COLOR="green"  # Production
+```
+
+### Demo Mode
+
+#### `VITE_IS_DEMO`
+
+**Type:** Boolean  
+**Default:** `false`  
+**Required:** No
+
+Enable read-only demo mode.
+
+```bash
+VITE_IS_DEMO="false"  # Normal mode
+VITE_IS_DEMO="true"   # Demo/read-only mode
+```
+
+### Logging Configuration
+
+#### `LOGGER_LEVEL`
+
+**Type:** String  
+**Default:** `info`  
+**Required:** No
+
+Log level for server logs.
+
+**Options:** `trace`, `debug`, `info`, `warn`, `error`, `fatal`
+
+```bash
+LOGGER_LEVEL="info"   # Development
+LOGGER_LEVEL="warn"   # Production
+```
+
+#### `LOGGER_PRETTY`
+
+**Type:** Boolean  
+**Default:** `true`  
+**Required:** No
+
+Use pretty-printed logs (easier to read, but slower).
+
+```bash
+LOGGER_PRETTY="true"   # Development
+LOGGER_PRETTY="false"  # Production (use JSON logs)
+```
+
+## Environment Examples
+
+### Development (.env)
+
+```bash
+VITE_PORT=3000
+VITE_BASE_URL="http://localhost:3000"
+
+# Docker services
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+
+# Database
+DATABASE_URL="postgres://startui:startui@localhost:5432/startui"
+
+# Auth
+AUTH_SECRET="dev-secret-change-in-production"
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+AUTH_TRUSTED_ORIGINS="start-ui-native://,start-ui-native://*"
+
+# S3 (MinIO)
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:9000"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://127.0.0.1:9000/default"
+
+# Email (Maildev)
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+EMAIL_FROM="Start UI <noreply@example.com>"
+
+# Environment indicator
+VITE_ENV_NAME="LOCAL"
+VITE_ENV_EMOJI="🚧"
+VITE_ENV_COLOR="gold"
+
+# Demo mode
+VITE_IS_DEMO="false"
+
+# Logging
+LOGGER_LEVEL="info"
+LOGGER_PRETTY="true"
+```
+
+### Production (.env.production)
+
+```bash
+VITE_PORT=3000
+VITE_BASE_URL="https://yourdomain.com"
+
+# Database (Supabase example)
+DATABASE_URL="postgresql://postgres:[password]@db.xxx.supabase.co:5432/postgres?sslmode=require"
+
+# Auth
+AUTH_SECRET="<generated-with-better-auth-cli>"
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+AUTH_ALLOWED_HOSTS="*.vercel.app"
+
+# OAuth
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+
+# S3 (AWS)
+S3_BUCKET_NAME="my-app-uploads"
+S3_HOST="s3.us-east-1.amazonaws.com"
+S3_ACCESS_KEY_ID="AKIA..."
+S3_SECRET_ACCESS_KEY="your-secret-key"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+VITE_S3_BUCKET_PUBLIC_URL="https://my-app-uploads.s3.amazonaws.com"
+
+# Email (SendGrid)
+EMAIL_SERVER="smtp://apikey:SG.xxx@smtp.sendgrid.net:587"
+EMAIL_FROM="Your App <noreply@yourdomain.com>"
+
+# Environment indicator (optional)
+VITE_ENV_NAME="production"
+VITE_ENV_EMOJI="🚀"
+VITE_ENV_COLOR="green"
+
+# Demo mode
+VITE_IS_DEMO="false"
+
+# Logging
+LOGGER_LEVEL="warn"
+LOGGER_PRETTY="false"
+```
+
+### Staging (.env.staging)
+
+```bash
+VITE_PORT=3000
+VITE_BASE_URL="https://staging.yourdomain.com"
+
+# Database (separate staging database)
+DATABASE_URL="postgresql://user:password@staging-db.example.com:5432/startui_staging?sslmode=require"
+
+# Auth (different secret per environment)
+AUTH_SECRET="<staging-specific-secret>"
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+
+# OAuth (can use same as prod or separate)
+GITHUB_CLIENT_ID="staging-github-client-id"
+GITHUB_CLIENT_SECRET="staging-github-client-secret"
+
+# S3 (separate staging bucket)
+S3_BUCKET_NAME="my-app-uploads-staging"
+S3_HOST="s3.us-east-1.amazonaws.com"
+S3_ACCESS_KEY_ID="AKIA..."
+S3_SECRET_ACCESS_KEY="staging-secret-key"
+S3_SECURE=true
+S3_FORCE_PATH_STYLE=false
+VITE_S3_BUCKET_PUBLIC_URL="https://my-app-uploads-staging.s3.amazonaws.com"
+
+# Email (SendGrid or test service)
+EMAIL_SERVER="smtp://apikey:SG.staging@smtp.sendgrid.net:587"
+EMAIL_FROM="Staging App <noreply-staging@yourdomain.com>"
+
+# Environment indicator
+VITE_ENV_NAME="staging"
+VITE_ENV_EMOJI="🔬"
+VITE_ENV_COLOR="teal"
+
+# Demo mode
+VITE_IS_DEMO="false"
+
+# Logging
+LOGGER_LEVEL="info"
+LOGGER_PRETTY="false"
+```
+
+## Security Best Practices
+
+### Secret Management
+
+1. **Never commit secrets to git**
+   - `.env` is in `.gitignore`
+   - `.env.example` should only contain placeholders
+
+2. **Use environment-specific secrets**
+   - Different `AUTH_SECRET` for each environment
+   - Separate database credentials
+   - Different OAuth apps per environment
+
+3. **Use secret management services** (production)
+   - AWS Secrets Manager
+   - HashiCorp Vault
+   - Cloud provider secret stores
+
+4. **Rotate secrets regularly**
+   - Change `AUTH_SECRET` periodically
+   - Rotate API keys and passwords
+   - Update OAuth credentials
+
+### Environment Validation
+
+Start UI [web] validates environment variables on startup using `@t3-oss/env-core`:
+
+- **Build time**: Validates `VITE_*` variables
+- **Runtime**: Validates server-side variables
+
+If validation fails, the application won't start and will show clear error messages.
+
+## Platform-Specific Configuration
+
+### Vercel
+
+Add environment variables in Project Settings → Environment Variables.
+
+**Build Command:**
+```bash
+pnpm build
+```
+
+**Start Command:**
+```bash
+pnpm start
+```
+
+### Railway
+
+Add variables in the Variables tab for your service.
+
+Railway provides `DATABASE_URL` automatically if you add a PostgreSQL plugin.
+
+### Render
+
+Add environment variables in the service's Environment section.
+
+**Build Command:**
+```bash
+pnpm install && pnpm build
+```
+
+**Start Command:**
+```bash
+pnpm start
+```
+
+## Troubleshooting
+
+### Environment variable not loading
+
+1. **Check `.env` file exists and has correct syntax**
+   ```bash
+   cat .env
+   ```
+
+2. **Ensure no spaces around `=`**
+   ```bash
+   # Correct
+   DATABASE_URL="postgres://..."
+   
+   # Wrong
+   DATABASE_URL = "postgres://..."
+   ```
+
+3. **Restart development server after changes**
+   ```bash
+   # Stop server (Ctrl+C)
+   pnpm dev
+   ```
+
+### Validation errors on startup
+
+**Read the error message carefully** - it will tell you which variables are missing or invalid.
+
+Common issues:
+- Missing required variable
+- Invalid format (e.g., boolean should be `true`/`false`)
+- Invalid URL format
+
+### Database connection fails
+
+1. **Verify `DATABASE_URL` format**
+2. **Check database is running** (for Docker: `pnpm dk:start`)
+3. **Test connection manually:**
+   ```bash
+   psql "postgresql://user:password@host:5432/database"
+   ```
+
+### S3 uploads fail
+
+1. **Verify all S3_* variables are set**
+2. **Check bucket exists and is accessible**
+3. **Verify credentials have write permissions**
+4. **Check CORS configuration** (for browser uploads)
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Production Build" icon="hammer" href="/deployment/production-build">
+    Build and deploy your application
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/deployment/docker">
+    Learn about local Docker services
+  </Card>
+</CardGroup>

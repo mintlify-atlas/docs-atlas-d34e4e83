@@ -1,0 +1,510 @@
+---
+title: Database Setup
+description: Configure Prisma, run migrations, and seed your database in Start UI [web]
+---
+
+Start UI [web] uses [Prisma](https://www.prisma.io/) as the ORM for database management with PostgreSQL.
+
+## Prisma Configuration
+
+### Schema Definition
+
+The Prisma schema is defined in `prisma/schema.prisma`:
+
+```prisma prisma/schema.prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  role        UserRole?
+  banned      Boolean?
+  banReason   String?
+  banExpires  DateTime?
+  onboardedAt DateTime?
+
+  @@unique([email])
+  @@map("user")
+}
+```
+
+### Custom Client Location
+
+The Prisma client is generated in a custom location for better ESM compatibility:
+
+```prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+```
+
+This generates the client at `src/server/db/generated` instead of `node_modules/@prisma/client`.
+
+## Database Connection
+
+### Environment Variables
+
+Configure your database connection in `.env`:
+
+```bash .env
+# Database connection string
+DATABASE_URL="postgres://username:password@localhost:5432/database_name"
+```
+
+### Database Client
+
+The Prisma client is instantiated in `src/server/db/index.ts`:
+
+```typescript src/server/db/index.ts
+import { PrismaClient } from './generated';
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+export const db =
+  globalForPrisma.prisma ??
+  new PrismaClient({
+    log: process.env.NODE_ENV === 'development' 
+      ? ['query', 'error', 'warn'] 
+      : ['error'],
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrisma.prisma = db;
+}
+```
+
+## Docker Setup
+
+Start UI [web] includes Docker Compose configuration for local development.
+
+### Start Database
+
+<Steps>
+
+<Step title="Initialize Docker containers">
+
+```bash
+pnpm dk:init
+```
+
+This starts:
+- PostgreSQL database on port 5432
+- MinIO (S3-compatible storage) on port 9000
+- MailDev (email testing) on port 1080
+
+</Step>
+
+<Step title="Verify connection">
+
+Check that the database is accessible:
+
+```bash
+pnpm prisma db pull
+```
+
+</Step>
+
+</Steps>
+
+### Docker Commands
+
+```bash
+# Start containers
+pnpm dk:start
+
+# Stop containers
+pnpm dk:stop
+
+# Remove containers and volumes
+pnpm dk:clear
+```
+
+### Environment Variables for Docker
+
+```bash .env
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+
+DATABASE_URL="postgres://${DOCKER_DATABASE_USERNAME}:${DOCKER_DATABASE_PASSWORD}@localhost:${DOCKER_DATABASE_PORT}/${DOCKER_DATABASE_NAME}"
+```
+
+## Migrations
+
+### Development Workflow
+
+For rapid development, use `db push` to sync schema changes:
+
+```bash
+pnpm db:push
+```
+
+This command:
+- Updates the database schema without creating migration files
+- Regenerates the Prisma client
+- Ideal for prototyping and local development
+
+<Warning>
+Don't use `db push` in production. Use proper migrations instead.
+</Warning>
+
+### Creating Migrations
+
+For production, create migration files:
+
+```bash
+px prisma migrate dev --name add_user_role
+```
+
+This:
+1. Creates a new migration file in `prisma/migrations/`
+2. Applies the migration to your database
+3. Regenerates the Prisma client
+
+### Applying Migrations
+
+In production, apply migrations:
+
+```bash
+px prisma migrate deploy
+```
+
+## Seeding
+
+### Seed Script Structure
+
+Seed scripts are in `prisma/seed/` directory:
+
+```typescript prisma/seed/index.ts
+import { db } from '@/server/db';
+import { createBooks } from './book';
+import { createUsers } from './user';
+
+async function main() {
+  await createBooks();
+  await createUsers();
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(() => {
+    db.$disconnect();
+  });
+```
+
+### Individual Seed Files
+
+Create modular seed functions:
+
+```typescript prisma/seed/user.ts
+import { faker } from '@faker-js/faker';
+import { db } from '@/server/db';
+
+export async function createUsers() {
+  // Create admin user
+  await db.user.upsert({
+    where: { email: 'admin@example.com' },
+    update: {},
+    create: {
+      email: 'admin@example.com',
+      name: 'Admin User',
+      emailVerified: true,
+      role: 'admin',
+    },
+  });
+
+  // Create regular users
+  for (let i = 0; i < 10; i++) {
+    await db.user.create({
+      data: {
+        email: faker.internet.email(),
+        name: faker.person.fullName(),
+        emailVerified: true,
+        role: 'user',
+      },
+    });
+  }
+}
+```
+
+### Using Faker for Test Data
+
+Generate realistic test data with Faker:
+
+```typescript prisma/seed/book.ts
+import { faker } from '@faker-js/faker';
+import { db } from '@/server/db';
+
+export async function createBooks() {
+  const genres = await db.genre.findMany();
+
+  for (let i = 0; i < 50; i++) {
+    await db.book.create({
+      data: {
+        title: faker.lorem.words(3),
+        author: faker.person.fullName(),
+        publisher: faker.company.name(),
+        genreId: faker.helpers.arrayElement(genres).id,
+      },
+    });
+  }
+}
+```
+
+### Loading Static Data
+
+For predefined data, use JSON files:
+
+```typescript prisma/seed/book.ts
+import bookData from './book-data.json';
+
+export async function createBooks() {
+  for (const book of bookData) {
+    await db.book.upsert({
+      where: { 
+        title_author: {
+          title: book.title,
+          author: book.author,
+        },
+      },
+      update: {},
+      create: book,
+    });
+  }
+}
+```
+
+### Running Seeds
+
+```bash
+pnpm db:seed
+```
+
+## Database Initialization
+
+Initialize the database with schema and seed data in one command:
+
+```bash
+pnpm db:init
+```
+
+This runs:
+1. `pnpm db:push` - Syncs schema to database
+2. `pnpm db:seed` - Seeds the database with test data
+
+## Prisma Studio
+
+Explore and edit your database with Prisma Studio:
+
+```bash
+pnpm db:ui
+```
+
+This opens a web interface at `http://localhost:5555` where you can:
+- Browse all tables and records
+- Edit data directly
+- Execute queries
+- Visualize relationships
+
+## Common Patterns
+
+### Unique Constraints
+
+Define unique constraints for data integrity:
+
+```prisma
+model Book {
+  id     String @id @default(cuid())
+  title  String
+  author String
+
+  @@unique([title, author])
+  @@map("book")
+}
+```
+
+### Relations
+
+Define relationships between models:
+
+```prisma
+model Book {
+  id      String  @id @default(cuid())
+  title   String
+  genre   Genre?  @relation(fields: [genreId], references: [id])
+  genreId String
+}
+
+model Genre {
+  id    String @id @default(cuid())
+  name  String @unique
+  books Book[]
+}
+```
+
+### Timestamps
+
+Automatic timestamp tracking:
+
+```prisma
+model Book {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+```
+
+### Optional Fields
+
+Use `?` for nullable fields:
+
+```prisma
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  image         String?   // Optional
+  onboardedAt   DateTime? // Optional
+}
+```
+
+## Better Auth Tables
+
+The starter includes Better Auth's required tables:
+
+```prisma
+model Session {
+  id        String   @id @default(cuid())
+  expiresAt DateTime
+  token     String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id          String   @id @default(cuid())
+  accountId   String
+  providerId  String
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // ... other fields
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id @default(cuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+
+  @@map("verification")
+}
+```
+
+## Troubleshooting
+
+### Regenerate Prisma Client
+
+If you encounter type errors after schema changes:
+
+```bash
+pnpm gen:prisma
+```
+
+### Reset Database
+
+To completely reset your database:
+
+```bash
+px prisma migrate reset
+```
+
+<Warning>
+This will delete all data and re-run migrations and seeds.
+</Warning>
+
+### Connection Issues
+
+If you can't connect to the database:
+
+1. Verify Docker containers are running: `docker ps`
+2. Check DATABASE_URL in `.env`
+3. Ensure the database accepts connections: `pnpm dk:start`
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use transactions for related operations">
+
+```typescript
+await db.$transaction([
+  db.user.create({ data: userData }),
+  db.account.create({ data: accountData }),
+]);
+```
+
+</Step>
+
+<Step title="Always handle errors">
+
+```typescript
+try {
+  await db.user.create({ data: userData });
+} catch (error) {
+  if (error.code === 'P2002') {
+    // Unique constraint violation
+    throw new Error('User already exists');
+  }
+  throw error;
+}
+```
+
+</Step>
+
+<Step title="Use upsert for idempotent operations">
+
+```typescript
+await db.user.upsert({
+  where: { email: 'user@example.com' },
+  update: { name: 'Updated Name' },
+  create: { email: 'user@example.com', name: 'New User' },
+});
+```
+
+</Step>
+
+</Steps>

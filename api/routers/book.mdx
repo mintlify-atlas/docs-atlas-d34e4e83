@@ -1,0 +1,312 @@
+---
+title: Book Router
+description: API endpoints for managing books in the library
+---
+
+The Book router provides CRUD operations for managing books in the system.
+
+## Authentication
+
+All endpoints require authentication via `protectedProcedure` with specific book permissions.
+
+## Endpoints
+
+### getAll
+
+Retrieves a paginated list of books with optional search.
+
+**Method:** `GET`
+
+**Path:** `/books`
+
+**Permissions:** `book:read`
+
+#### Input Parameters
+
+<ParamField path="cursor" type="string">
+  Pagination cursor (book ID) for fetching the next page
+</ParamField>
+
+<ParamField path="limit" type="number" default="20">
+  Number of items per page (min: 1, max: 100)
+</ParamField>
+
+<ParamField path="searchTerm" type="string" default="">
+  Search term to filter books by title or author (case-insensitive)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="Book[]">
+  Array of book objects with associated genre data
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string">
+  Cursor for the next page of results (if available)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of books matching the search criteria
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const result = await orpc.book.getAll({
+  limit: 20,
+  searchTerm: 'tolkien',
+});
+
+console.log(`Found ${result.total} books`);
+result.items.forEach(book => {
+  console.log(`${book.title} by ${book.author}`);
+});
+```
+
+#### Behavior
+
+- Results are ordered by title (ascending)
+- Includes associated genre data for each book
+- Searches both title and author fields
+
+---
+
+### getById
+
+Retrieves a single book by its ID.
+
+**Method:** `GET`
+
+**Path:** `/books/{id}`
+
+**Permissions:** `book:read`
+
+#### Input Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the book
+</ParamField>
+
+#### Response
+
+<ResponseField name="book" type="Book">
+  The book object with all fields and associated genre data
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const book = await orpc.book.getById({
+  id: 'book_123',
+});
+
+console.log(book.title);
+console.log(book.genre?.name);
+```
+
+#### Errors
+
+- `NOT_FOUND`: Book with the specified ID does not exist
+
+---
+
+### create
+
+Creates a new book.
+
+**Method:** `POST`
+
+**Path:** `/books`
+
+**Permissions:** `book:create`
+
+#### Input Parameters
+
+<ParamField path="title" type="string" required>
+  The book's title
+</ParamField>
+
+<ParamField path="author" type="string" required>
+  The book's author
+</ParamField>
+
+<ParamField path="genreId" type="string" required>
+  The ID of the associated genre
+</ParamField>
+
+<ParamField path="publisher" type="string">
+  The book's publisher
+</ParamField>
+
+<ParamField path="coverId" type="string">
+  The ID of the book's cover image
+</ParamField>
+
+#### Response
+
+<ResponseField name="book" type="Book">
+  The created book object
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const newBook = await orpc.book.create({
+  title: 'The Lord of the Rings',
+  author: 'J.R.R. Tolkien',
+  genreId: 'genre_fantasy',
+  publisher: 'George Allen & Unwin',
+  coverId: 'cover_123',
+});
+```
+
+#### Behavior
+
+- `genreId` is optional and will be set to `undefined` if null
+- `publisher` and `coverId` are optional fields
+
+---
+
+### updateById
+
+Updates an existing book.
+
+**Method:** `POST`
+
+**Path:** `/books/{id}`
+
+**Permissions:** `book:update`
+
+#### Input Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the book to update
+</ParamField>
+
+<ParamField path="title" type="string" required>
+  The book's updated title
+</ParamField>
+
+<ParamField path="author" type="string" required>
+  The book's updated author
+</ParamField>
+
+<ParamField path="genreId" type="string" required>
+  The ID of the associated genre
+</ParamField>
+
+<ParamField path="publisher" type="string">
+  The book's updated publisher
+</ParamField>
+
+<ParamField path="coverId" type="string">
+  The ID of the book's updated cover image
+</ParamField>
+
+#### Response
+
+<ResponseField name="book" type="Book">
+  The updated book object
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const updatedBook = await orpc.book.updateById({
+  id: 'book_123',
+  title: 'The Hobbit',
+  author: 'J.R.R. Tolkien',
+  genreId: 'genre_fantasy',
+  publisher: 'George Allen & Unwin',
+});
+```
+
+#### Behavior
+
+- `publisher` and `coverId` are set to `null` if not provided
+- All fields can be updated
+
+---
+
+### deleteById
+
+Deletes a book by its ID.
+
+**Method:** `DELETE`
+
+**Path:** `/books/{id}`
+
+**Permissions:** `book:delete`
+
+#### Input Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the book to delete
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+await orpc.book.deleteById({
+  id: 'book_123',
+});
+```
+
+## Data Types
+
+### Book
+
+<ParamField path="id" type="string">
+  Unique identifier
+</ParamField>
+
+<ParamField path="title" type="string">
+  Book title
+</ParamField>
+
+<ParamField path="author" type="string">
+  Book author
+</ParamField>
+
+<ParamField path="genre" type="Genre">
+  Associated genre object
+</ParamField>
+
+<ParamField path="publisher" type="string">
+  Book publisher
+</ParamField>
+
+<ParamField path="coverId" type="string">
+  Cover image ID
+</ParamField>
+
+<ParamField path="createdAt" type="Date">
+  Creation timestamp
+</ParamField>
+
+<ParamField path="updatedAt" type="Date">
+  Last update timestamp
+</ParamField>
+
+### Accepted Cover File Types
+
+- `image/png`
+- `image/jpeg`
+- `image/webp`
+- `image/gif`

@@ -1,0 +1,481 @@
+---
+title: Database
+description: Prisma ORM usage patterns and database management
+---
+
+## Overview
+
+Start UI [web] uses **Prisma ORM** with PostgreSQL for type-safe database operations. Prisma provides schema definition, migrations, and a fully typed client.
+
+## Database Setup
+
+The Prisma client is configured in `src/server/db/index.ts`:
+
+```tsx src/server/db/index.ts
+import { envServer } from '@/env/server';
+import { timingStore } from '@/server/timing-store';
+import { PrismaClient } from './generated/client';
+
+const levels = {
+  trace: ['query', 'error', 'warn', 'info'],
+  debug: ['error', 'warn', 'info'],
+  info: ['error', 'warn', 'info'],
+  warn: ['error', 'warn'],
+  error: ['error'],
+  fatal: ['error'],
+} satisfies Record<string, ('query' | 'error' | 'warn' | 'info')[]>;
+
+function createPrisma() {
+  return new PrismaClient({
+    log: levels[envServer.LOGGER_LEVEL],
+  }).$extends({
+    name: 'server-timing',
+    query: {
+      $allModels: {
+        async $allOperations({ query, args, model, operation }) {
+          const start = performance.now();
+          const result = await query(args);
+          const duration = performance.now() - start;
+
+          const store = timingStore.getStore();
+          if (store) {
+            store.prisma.push({ model, operation, duration });
+          }
+
+          return result;
+        },
+      },
+    },
+  });
+}
+
+const globalForPrisma = globalThis as unknown as {
+  prisma: ReturnType<typeof createPrisma> | undefined;
+};
+
+export const db = globalForPrisma.prisma ?? createPrisma();
+
+if (import.meta.env.DEV) globalForPrisma.prisma = db;
+```
+
+### Key Features
+
+- **Logging** - Configurable log levels based on environment
+- **Performance tracking** - Custom extension for Server-Timing headers
+- **Singleton pattern** - Reuse client in development
+
+## Schema Definition
+
+The Prisma schema is defined in `prisma/schema.prisma`:
+
+```prisma prisma/schema.prisma
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/server/db/generated"
+  moduleFormat = "esm"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  role        UserRole?
+  banned      Boolean?
+  banReason   String?
+  banExpires  DateTime?
+  onboardedAt DateTime?
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Book {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  title     String
+  author    String
+  genre     Genre?   @relation(fields: [genreId], references: [id])
+  genreId   String
+  publisher String?
+  coverId   String?
+
+  @@unique([title, author])
+  @@map("book")
+}
+
+model Genre {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  name      String   @unique
+  color     String
+  Book      Book[]
+
+  @@map("genre")
+}
+```
+
+### Schema Conventions
+
+- **`@id @default(cuid())`** - CUID for distributed ID generation
+- **`@default(now())`** - Automatic timestamps
+- **`@updatedAt`** - Auto-updated modification timestamp
+- **`@@map()`** - Map to snake_case table names
+- **`@@unique()`** - Composite unique constraints
+
+## Using Prisma in Procedures
+
+The database client is injected into oRPC context:
+
+```tsx src/server/orpc.ts
+const base = os
+  .use(async ({ next }) => {
+    return await next({
+      context: {
+        user: session?.user,
+        session: session?.session,
+        db, // Prisma client available
+      },
+    });
+  });
+```
+
+### Example: Query Operations
+
+```tsx src/server/routers/book.ts
+export default {
+  getAll: protectedProcedure({ permissions: { book: ['read'] } })
+    .route({ method: 'GET', path: '/books', tags: ['books'] })
+    .input(
+      z.object({
+        cursor: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).prefault(20),
+        searchTerm: z.string().trim().optional().prefault(''),
+      }).prefault({})
+    )
+    .handler(async ({ context, input }) => {
+      const where = {
+        OR: [
+          {
+            title: {
+              contains: input.searchTerm,
+              mode: 'insensitive',
+            },
+          },
+          {
+            author: {
+              contains: input.searchTerm,
+              mode: 'insensitive',
+            },
+          },
+        ],
+      } satisfies Prisma.BookWhereInput;
+
+      const [total, items] = await Promise.all([
+        context.db.book.count({ where }),
+        context.db.book.findMany({
+          take: input.limit + 1,
+          cursor: input.cursor ? { id: input.cursor } : undefined,
+          orderBy: { title: 'asc' },
+          where,
+          include: { genre: true },
+        }),
+      ]);
+
+      let nextCursor: typeof input.cursor | undefined = undefined;
+      if (items.length > input.limit) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { items, nextCursor, total };
+    }),
+};
+```
+
+### Example: Create Operation
+
+```tsx
+create: protectedProcedure({ permissions: { book: ['create'] } })
+  .route({ method: 'POST', path: '/books', tags: ['books'] })
+  .input(zFormFieldsBook())
+  .output(zBook())
+  .handler(async ({ context, input }) => {
+    context.logger.info('Create book');
+    return await context.db.book.create({
+      data: {
+        title: input.title,
+        author: input.author,
+        genreId: input.genreId ?? undefined,
+        publisher: input.publisher,
+        coverId: input.coverId,
+      },
+    });
+  }),
+```
+
+### Example: Update Operation
+
+```tsx
+updateById: protectedProcedure({ permissions: { book: ['update'] } })
+  .route({ method: 'POST', path: '/books/{id}', tags: ['books'] })
+  .input(zFormFieldsBook().extend({ id: z.string() }))
+  .output(zBook())
+  .handler(async ({ context, input }) => {
+    context.logger.info('Update book');
+    return await context.db.book.update({
+      where: { id: input.id },
+      data: {
+        title: input.title,
+        author: input.author,
+        genreId: input.genreId,
+        publisher: input.publisher ?? null,
+        coverId: input.coverId ?? null,
+      },
+    });
+  }),
+```
+
+### Example: Delete Operation
+
+```tsx
+deleteById: protectedProcedure({ permissions: { book: ['delete'] } })
+  .route({ method: 'DELETE', path: '/books/{id}', tags: ['books'] })
+  .input(zBook().pick({ id: true }))
+  .output(z.void())
+  .handler(async ({ context, input }) => {
+    context.logger.info('Delete book');
+    await context.db.book.delete({
+      where: { id: input.id },
+    });
+  }),
+```
+
+## Error Handling
+
+Prisma errors are automatically caught and transformed by middleware:
+
+```tsx src/server/orpc.ts
+const base = os
+  .use(async ({ next, context }) => {
+    try {
+      return await next();
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        throw match(error.code)
+          .with('P2002', () => {
+            context.logger.warn(error.meta, `Prisma Error: ${error.code}`);
+            return new ORPCError('CONFLICT', {
+              message: 'Unique constraint violation',
+              data: { target: error.meta?.target },
+            });
+          })
+          .with('P2025', () => {
+            context.logger.warn(error.meta, `Prisma Error ${error.code}`);
+            return new ORPCError('NOT_FOUND', {
+              message: 'Record not found',
+            });
+          })
+          .with('P2003', () => {
+            context.logger.error(error.meta, `Prisma Error ${error.code}`);
+            return new ORPCError('BAD_REQUEST', {
+              message: 'Foreign key constraint violation',
+            });
+          })
+          .otherwise(() => {
+            context.logger.error(error.meta, `Prisma Error ${error.code}`);
+            return new ORPCError('INTERNAL_SERVER_ERROR', {
+              message: 'Database error',
+            });
+          });
+      }
+
+      if (error instanceof Prisma.PrismaClientValidationError) {
+        context.logger.error(`Prisma Client Validation Error: ${error.message}`);
+        throw new ORPCError('BAD_REQUEST', {
+          message: 'Database validation error',
+        });
+      }
+
+      throw new ORPCError('INTERNAL_SERVER_ERROR', {
+        message: 'Unhandled error',
+      });
+    }
+  });
+```
+
+### Common Error Codes
+
+- **P2002** - Unique constraint violation
+- **P2025** - Record not found
+- **P2003** - Foreign key constraint violation
+
+## Database Commands
+
+### Generate Prisma Client
+
+```bash
+pnpm gen:prisma
+```
+
+Generates the typed Prisma client from your schema.
+
+### Push Schema Changes
+
+```bash
+pnpm db:push
+```
+
+Pushes schema changes to the database (development).
+
+### Create Migration
+
+```bash
+pnpx prisma migrate dev --name add_new_field
+```
+
+Creates a new migration file (production).
+
+### Seed Database
+
+```bash
+pnpm db:seed
+```
+
+Runs the seed script in `prisma/seed/index.ts`.
+
+### Open Prisma Studio
+
+```bash
+pnpm db:ui
+```
+
+Launches Prisma Studio for visual database management.
+
+## Type Safety
+
+Prisma generates fully-typed models:
+
+```tsx
+import { Prisma } from '@/server/db/generated/client';
+
+// Type-safe where clause
+const where: Prisma.BookWhereInput = {
+  title: { contains: 'React' },
+  genre: { name: 'Programming' },
+};
+
+// Type-safe select
+const select: Prisma.BookSelect = {
+  id: true,
+  title: true,
+  author: true,
+  genre: { select: { name: true, color: true } },
+};
+```
+
+## Performance Optimization
+
+### Server-Timing Headers
+
+The custom Prisma extension tracks query performance:
+
+```tsx
+$extends({
+  name: 'server-timing',
+  query: {
+    $allModels: {
+      async $allOperations({ query, args, model, operation }) {
+        const start = performance.now();
+        const result = await query(args);
+        const duration = performance.now() - start;
+        
+        timingStore.getStore()?.prisma.push({ 
+          model, 
+          operation, 
+          duration 
+        });
+        
+        return result;
+      },
+    },
+  },
+})
+```
+
+Query timings appear in response headers:
+
+```
+Server-Timing: db-Book-findMany;dur=12.34, db-Genre-findMany;dur=5.67
+```
+
+### Cursor-Based Pagination
+
+Use cursor pagination for large datasets:
+
+```tsx
+const items = await context.db.book.findMany({
+  take: input.limit + 1,
+  cursor: input.cursor ? { id: input.cursor } : undefined,
+  orderBy: { title: 'asc' },
+});
+
+let nextCursor: string | undefined;
+if (items.length > input.limit) {
+  const nextItem = items.pop();
+  nextCursor = nextItem?.id;
+}
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use transactions for related operations">
+    Wrap related database operations in `$transaction()` to ensure atomicity.
+  </Accordion>
+
+  <Accordion title="Select only needed fields">
+    Use `select` to fetch only required fields and reduce data transfer.
+  </Accordion>
+
+  <Accordion title="Include relations strategically">
+    Only `include` relations when needed - avoid N+1 queries.
+  </Accordion>
+
+  <Accordion title="Use Prisma types for validation">
+    Leverage generated Prisma types (`Prisma.BookWhereInput`) for type-safe queries.
+  </Accordion>
+
+  <Accordion title="Monitor query performance">
+    Use Server-Timing headers to identify slow queries in development.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Layer" icon="code" href="/concepts/api-layer">
+    Learn how to expose database operations via oRPC
+  </Card>
+  <Card title="Authentication" icon="lock" href="/concepts/authentication">
+    Understand how Prisma integrates with Better Auth
+  </Card>
+</CardGroup>

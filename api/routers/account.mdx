@@ -1,0 +1,90 @@
+---
+title: Account Router
+description: API endpoints for managing the authenticated user's account
+---
+
+The Account router provides endpoints for managing the current user's account information and onboarding flow.
+
+## Authentication
+
+All endpoints in this router require authentication via `protectedProcedure`.
+
+## Endpoints
+
+### submitOnboarding
+
+Submits the user's onboarding information and marks them as onboarded.
+
+**Method:** `POST`
+
+**Path:** `/account/submit-onboarding`
+
+**Permissions:** None (authenticated users only)
+
+#### Input Parameters
+
+<ParamField path="name" type="string" required>
+  The user's name
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+await orpc.account.submitOnboarding({
+  name: 'John Doe',
+});
+```
+
+#### Behavior
+
+- Updates the user's record with the provided onboarding data
+- Sets `onboardedAt` to the current timestamp
+- Only updates the authenticated user's own account
+
+---
+
+### updateInfo
+
+Updates the authenticated user's account information.
+
+**Method:** `POST`
+
+**Path:** `/account/info`
+
+**Permissions:** None (authenticated users only)
+
+#### Input Parameters
+
+<ParamField path="name" type="string" required>
+  The user's updated name
+</ParamField>
+
+#### Response
+
+<ResponseField name="void" type="void">
+  Returns void on success
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+await orpc.account.updateInfo({
+  name: 'Jane Smith',
+});
+```
+
+#### Behavior
+
+- Updates only the authenticated user's name
+- Empty strings are allowed
+- Only affects the current user's account

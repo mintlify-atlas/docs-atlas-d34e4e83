@@ -1,0 +1,638 @@
+---
+title: Forms
+description: Build forms with React Hook Form, Zod validation, and custom field components in Start UI [web]
+---
+
+Start UI [web] provides a comprehensive form system built on [React Hook Form](https://react-hook-form.com/) with [Zod](https://zod.dev/) schema validation.
+
+## Form Components
+
+### Basic Form Setup
+
+The `Form` component wraps React Hook Form with automatic submission handling:
+
+```tsx
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Form, FormField, FormFieldController, FormFieldLabel } from '@/components/form';
+import { Button } from '@/components/ui/button';
+import { z } from 'zod';
+
+const schema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  email: z.string().email('Invalid email'),
+});
+
+export function MyForm() {
+  const form = useForm({
+    resolver: zodResolver(schema),
+    defaultValues: {
+      name: '',
+      email: '',
+    },
+  });
+
+  const onSubmit = async (data) => {
+    console.log(data);
+  };
+
+  return (
+    <Form {...form} onSubmit={onSubmit}>
+      <FormField>
+        <FormFieldLabel>Name</FormFieldLabel>
+        <FormFieldController
+          control={form.control}
+          type="text"
+          name="name"
+        />
+      </FormField>
+
+      <Button type="submit">
+        Submit
+      </Button>
+    </Form>
+  );
+}
+```
+
+### Form Component Props
+
+The `Form` component accepts:
+
+- All React Hook Form props from `useForm()`
+- `onSubmit`: Handler function for form submission
+- `noHtmlForm`: Opt-out of automatic form element wrapping
+
+```tsx
+// Automatic form element (default)
+<Form {...form} onSubmit={handleSubmit}>
+  {/* Fields */}
+</Form>
+
+// Manual form element
+<Form {...form} noHtmlForm>
+  <form onSubmit={form.handleSubmit(handleSubmit)}>
+    {/* Fields */}
+  </form>
+</Form>
+```
+
+## Field Components
+
+### FormFieldController
+
+The `FormFieldController` component handles different input types:
+
+<CodeGroup>
+
+```tsx Text Input
+<FormFieldController
+  control={form.control}
+  type="text"
+  name="name"
+  placeholder="Enter your name"
+  size="lg"
+/>
+```
+
+```tsx Email Input
+<FormFieldController
+  control={form.control}
+  type="email"
+  name="email"
+  placeholder="email@example.com"
+/>
+```
+
+```tsx Number Input
+<FormFieldController
+  control={form.control}
+  type="number"
+  name="age"
+  min={0}
+  max={120}
+/>
+```
+
+```tsx Textarea
+<FormFieldController
+  control={form.control}
+  type="textarea"
+  name="description"
+  rows={5}
+/>
+```
+
+```tsx Select
+<FormFieldController
+  control={form.control}
+  type="select"
+  name="role"
+  options={[
+    { value: 'user', label: 'User' },
+    { value: 'admin', label: 'Admin' },
+  ]}
+/>
+```
+
+```tsx Checkbox
+<FormFieldController
+  control={form.control}
+  type="checkbox"
+  name="terms"
+  label="I agree to the terms"
+/>
+```
+
+```tsx Date Picker
+<FormFieldController
+  control={form.control}
+  type="date"
+  name="birthdate"
+/>
+```
+
+```tsx OTP Input
+<FormFieldController
+  control={form.control}
+  type="otp"
+  name="code"
+  maxLength={6}
+  autoSubmit
+  autoFocus
+/>
+```
+
+</CodeGroup>
+
+### Complete Field Example
+
+A fully featured form field with label, helper text, and error:
+
+```tsx
+import {
+  FormField,
+  FormFieldLabel,
+  FormFieldController,
+  FormFieldHelper,
+  FormFieldError,
+} from '@/components/form';
+
+<FormField size="lg">
+  <FormFieldLabel>Email Address</FormFieldLabel>
+  <FormFieldController
+    control={form.control}
+    type="email"
+    name="email"
+    placeholder="you@example.com"
+  />
+  <FormFieldHelper>
+    We'll never share your email with anyone else.
+  </FormFieldHelper>
+  <FormFieldError />
+</FormField>
+```
+
+## Validation with Zod
+
+### Zod Utilities
+
+Start UI [web] includes Zod utilities for common validations:
+
+```typescript src/lib/zod/zod-utils.ts
+import { zu } from '@/lib/zod/zod-utils';
+
+const schema = z.object({
+  name: zu.fieldText.required(),
+  email: zu.fieldEmail.required(),
+  age: zu.fieldNumber.optional(),
+  description: zu.fieldTextarea.optional(),
+});
+```
+
+### Field Validation Patterns
+
+<CodeGroup>
+
+```typescript Email
+const schema = z.object({
+  email: z
+    .string()
+    .min(1, 'Email is required')
+    .email('Invalid email address'),
+});
+```
+
+```typescript Password
+const schema = z.object({
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .regex(
+      /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+      'Password must contain uppercase, lowercase, and number'
+    ),
+});
+```
+
+```typescript Confirm Password
+const schema = z
+  .object({
+    password: z.string().min(8),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ['confirmPassword'],
+  });
+```
+
+```typescript Custom Validation
+const schema = z.object({
+  username: z
+    .string()
+    .min(3)
+    .refine(
+      async (username) => {
+        // Check if username is available
+        const available = await checkUsername(username);
+        return available;
+      },
+      { message: 'Username is already taken' }
+    ),
+});
+```
+
+</CodeGroup>
+
+## Form Patterns from the Starter
+
+### User Creation Form
+
+Real example from `src/features/user/manager/page-user-new.tsx`:
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner';
+
+export const PageUserNew = () => {
+  const { t } = useTranslation(['user']);
+  const queryClient = useQueryClient();
+  
+  const form = useForm({
+    resolver: zodResolver(zFormFieldsUser()),
+    values: {
+      name: '',
+      email: '',
+      role: 'user',
+    },
+  });
+
+  const userCreate = useMutation(
+    orpc.user.create.mutationOptions({
+      onSuccess: async () => {
+        // Invalidate users list
+        await queryClient.invalidateQueries({
+          queryKey: orpc.user.getAll.key(),
+        });
+        navigateBack({ ignoreBlocker: true });
+      },
+      onError: (error) => {
+        if (error.code === 'CONFLICT' && error.data?.target?.includes('email')) {
+          form.setError('email', {
+            message: t('user:manager.form.emailAlreadyExist'),
+          });
+          return;
+        }
+        toast.error(t('user:manager.new.createError'));
+      },
+    })
+  );
+
+  return (
+    <Form {...form} onSubmit={(values) => userCreate.mutate(values)}>
+      <FormUser />
+      <Button type="submit" loading={userCreate.isPending}>
+        Create User
+      </Button>
+    </Form>
+  );
+};
+```
+
+### Login Form with OTP
+
+Real example from `src/features/auth/page-login.tsx`:
+
+```tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { useForm } from 'react-hook-form';
+import { authClient } from '@/features/auth/client';
+
+export default function PageLogin({ search }) {
+  const form = useForm({
+    mode: 'onSubmit',
+    resolver: zodResolver(zFormFieldsLogin()),
+    defaultValues: { email: '' },
+  });
+
+  const submitHandler = async ({ email }) => {
+    const result = await authClient.emailOtp.sendVerificationOtp({
+      email,
+      type: 'sign-in',
+    });
+
+    if (result.error) {
+      toast.error(errorMessage);
+      return;
+    }
+
+    router.navigate({
+      to: '/login/verify',
+      search: { redirect: search.redirect, email },
+    });
+  };
+
+  return (
+    <Form {...form} onSubmit={submitHandler}>
+      <FormField>
+        <FormFieldLabel className="sr-only">
+          Email
+        </FormFieldLabel>
+        <FormFieldController
+          type="email"
+          control={form.control}
+          name="email"
+          size="lg"
+          placeholder="Email"
+        />
+      </FormField>
+      <Button
+        loading={form.formState.isSubmitting}
+        type="submit"
+        size="lg"
+      >
+        Continue
+      </Button>
+    </Form>
+  );
+}
+```
+
+## Advanced Patterns
+
+### Custom Field Component
+
+Create custom fields with full control:
+
+```tsx
+<FormFieldController
+  control={form.control}
+  name="customField"
+  type="custom"
+  render={({ field, fieldState }) => (
+    <>
+      <InputGroup>
+        <InputGroupAddon>
+          <InputGroupText>https://</InputGroupText>
+        </InputGroupAddon>
+        <InputGroupInput
+          {...field}
+          aria-invalid={fieldState.invalid ? true : undefined}
+          value={field.value ?? ''}
+        />
+      </InputGroup>
+      <FormFieldError />
+    </>
+  )}
+/>
+```
+
+### Form Mode Configuration
+
+```tsx
+const form = useForm({
+  mode: 'onBlur',      // Validate on blur
+  mode: 'onChange',    // Validate on every change
+  mode: 'onSubmit',    // Validate only on submit (default)
+  mode: 'onTouched',   // Validate after first blur, then on change
+});
+```
+
+### Conditional Fields
+
+```tsx
+function MyForm() {
+  const form = useForm();
+  const showAdvanced = form.watch('showAdvanced');
+
+  return (
+    <Form {...form} onSubmit={handleSubmit}>
+      <FormFieldController
+        control={form.control}
+        type="checkbox"
+        name="showAdvanced"
+        label="Show advanced options"
+      />
+
+      {showAdvanced && (
+        <FormFieldController
+          control={form.control}
+          type="text"
+          name="advancedOption"
+        />
+      )}
+    </Form>
+  );
+}
+```
+
+### Dynamic Field Arrays
+
+```tsx
+import { useFieldArray } from 'react-hook-form';
+
+function MyForm() {
+  const form = useForm();
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: 'items',
+  });
+
+  return (
+    <Form {...form} onSubmit={handleSubmit}>
+      {fields.map((field, index) => (
+        <div key={field.id}>
+          <FormFieldController
+            control={form.control}
+            type="text"
+            name={`items.${index}.name`}
+          />
+          <Button onClick={() => remove(index)}>Remove</Button>
+        </div>
+      ))}
+      <Button onClick={() => append({ name: '' })}>
+        Add Item
+      </Button>
+    </Form>
+  );
+}
+```
+
+### Server Errors
+
+Set errors from server responses:
+
+```tsx
+const onSubmit = async (data) => {
+  try {
+    await createUser(data);
+  } catch (error) {
+    if (error.code === 'CONFLICT' && error.target === 'email') {
+      form.setError('email', {
+        message: 'Email already exists',
+      });
+    }
+  }
+};
+```
+
+### Prevent Navigation
+
+Warn users about unsaved changes:
+
+```tsx
+import { PreventNavigation } from '@/components/prevent-navigation';
+
+function MyForm() {
+  const form = useForm();
+
+  return (
+    <>
+      <PreventNavigation shouldBlock={form.formState.isDirty} />
+      <Form {...form} onSubmit={handleSubmit}>
+        {/* Fields */}
+      </Form>
+    </>
+  );
+}
+```
+
+## Form State
+
+### Accessing Form State
+
+```tsx
+const form = useForm();
+
+const {
+  isSubmitting,   // Form is currently submitting
+  isValid,        // All fields are valid
+  isDirty,        // Any field has been modified
+  isSubmitted,    // Form has been submitted
+  errors,         // Validation errors
+} = form.formState;
+```
+
+### Loading States
+
+```tsx
+<Button
+  type="submit"
+  loading={form.formState.isSubmitting}
+  disabled={!form.formState.isValid}
+>
+  Submit
+</Button>
+```
+
+## Internationalization
+
+Form labels and errors support i18n:
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+function MyForm() {
+  const { t } = useTranslation(['common']);
+
+  return (
+    <FormField>
+      <FormFieldLabel>
+        {t('common:form.email.label')}
+      </FormFieldLabel>
+      <FormFieldController
+        control={form.control}
+        type="email"
+        name="email"
+        placeholder={t('common:form.email.placeholder')}
+      />
+    </FormField>
+  );
+}
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Always use Zod schemas for validation">
+
+Define schemas separately for reusability:
+
+```typescript
+export const zFormFieldsUser = () =>
+  z.object({
+    name: zu.fieldText.required(),
+    email: zu.fieldEmail.required(),
+    role: z.enum(['user', 'admin']),
+  });
+```
+
+</Step>
+
+<Step title="Use form state for UI feedback">
+
+```tsx
+const { isValid, isSubmitted } = form.formState;
+
+{!isValid && isSubmitted && (
+  <Alert variant="destructive">
+    Please fix the errors above
+  </Alert>
+)}
+```
+
+</Step>
+
+<Step title="Handle async validation properly">
+
+```typescript
+const schema = z.object({
+  email: zu.fieldEmail.required().refine(
+    async (email) => {
+      const available = await checkEmailAvailable(email);
+      return available;
+    },
+    { message: 'Email already in use' }
+  ),
+});
+```
+
+</Step>
+
+<Step title="Reset form after successful submission">
+
+```tsx
+const onSubmit = async (data) => {
+  await createUser(data);
+  form.reset();
+  toast.success('User created!');
+};
+```
+
+</Step>
+
+</Steps>

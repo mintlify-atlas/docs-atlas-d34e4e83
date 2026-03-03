@@ -1,0 +1,96 @@
+---
+title: Genre Router
+description: API endpoints for managing book genres
+---
+
+The Genre router provides endpoints for retrieving genre information.
+
+## Authentication
+
+All endpoints require authentication via `protectedProcedure` with genre read permissions.
+
+## Endpoints
+
+### getAll
+
+Retrieves a paginated list of genres with optional search.
+
+**Method:** `GET`
+
+**Path:** `/genres`
+
+**Permissions:** `genre:read`
+
+#### Input Parameters
+
+<ParamField path="cursor" type="string">
+  Pagination cursor (genre ID) for fetching the next page
+</ParamField>
+
+<ParamField path="limit" type="number" default="20">
+  Number of items per page (min: 1, max: 100)
+</ParamField>
+
+<ParamField path="searchTerm" type="string">
+  Search term to filter genres by name (case-insensitive)
+</ParamField>
+
+#### Response
+
+<ResponseField name="items" type="Genre[]">
+  Array of genre objects
+</ResponseField>
+
+<ResponseField name="nextCursor" type="string">
+  Cursor for the next page of results (if available)
+</ResponseField>
+
+<ResponseField name="total" type="number">
+  Total number of genres matching the search criteria
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const result = await orpc.genre.getAll({
+  limit: 20,
+  searchTerm: 'fantasy',
+});
+
+console.log(`Found ${result.total} genres`);
+result.items.forEach(genre => {
+  console.log(`${genre.name} - ${genre.color}`);
+});
+```
+
+#### Behavior
+
+- Results are ordered by name (ascending)
+- Search is case-insensitive
+- Returns empty results if no matches found
+
+## Data Types
+
+### Genre
+
+<ParamField path="id" type="string">
+  Unique identifier
+</ParamField>
+
+<ParamField path="name" type="string">
+  Genre name
+</ParamField>
+
+<ParamField path="color" type="string">
+  Hex color code (7 characters including #)
+</ParamField>
+
+<ParamField path="createdAt" type="Date">
+  Creation timestamp
+</ParamField>
+
+<ParamField path="updatedAt" type="Date">
+  Last update timestamp
+</ParamField>

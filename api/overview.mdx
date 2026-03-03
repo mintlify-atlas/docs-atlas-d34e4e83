@@ -1,0 +1,228 @@
+---
+title: API Architecture Overview
+description: Understanding the type-safe API architecture built with oRPC
+---
+
+Start UI [web] uses [oRPC](https://orpc.io) to provide a fully type-safe API layer between the client and server. This architecture ensures end-to-end type safety from your database queries to your React components.
+
+## What is oRPC?
+
+oRPC is a modern RPC (Remote Procedure Call) framework that provides:
+
+- **End-to-end type safety** - Full TypeScript inference from server to client
+- **React Query integration** - Built-in hooks for queries and mutations
+- **OpenAPI generation** - Automatic REST API documentation
+- **Middleware support** - Composable request/response handling
+- **Zod validation** - Runtime input/output validation
+
+## Architecture Overview
+
+The API architecture consists of three main layers:
+
+### 1. Server Layer
+
+#### Procedures (`src/server/orpc.ts`)
+
+The foundation of the API is built on two procedure types:
+
+**Public Procedures** - Available to all users:
+```typescript
+export const publicProcedure = () => base;
+```
+
+**Protected Procedures** - Require authentication and optional permissions:
+```typescript
+export const protectedProcedure = ({
+  permissions,
+}: {
+  permissions: Permission | null;
+}) => base.use(async ({ context, next }) => {
+  const { user, session } = context;
+  
+  if (!user || !session) {
+    throw new ORPCError('UNAUTHORIZED');
+  }
+  
+  // Permission check logic...
+});
+```
+
+#### Middleware Stack
+
+Every request passes through a middleware pipeline that provides:
+
+- **Authentication** - Session validation via Better Auth
+- **Logging** - Structured request/response logging with Winston
+- **Database Timing** - Performance monitoring for Prisma queries
+- **Demo Mode Protection** - Prevents mutations in demo environments
+- **Error Handling** - Transforms Prisma errors into proper API responses
+
+#### Router Structure (`src/server/router.ts`)
+
+The API is organized into feature-based routers:
+
+```typescript
+export const router = {
+  account: accountRouter,
+  book: bookRouter,
+  genre: genreRouter,
+  user: userRouter,
+  config: configRouter,
+};
+```
+
+Each router contains related procedures. For example, the `user` router (`src/server/routers/user.ts`) includes:
+
+- `getAll` - List users with pagination and search
+- `getById` - Fetch a single user
+- `create` - Create a new user
+- `updateById` - Update user details
+- `deleteById` - Remove a user
+- `getUserSessions` - List user sessions
+- `revokeUserSession` - Revoke a specific session
+- `revokeUserSessions` - Revoke all user sessions
+
+#### Procedure Definition
+
+Each procedure follows this pattern:
+
+```typescript
+getAll: protectedProcedure({
+  permissions: {
+    user: ['list'],
+  },
+})
+  .route({
+    method: 'GET',
+    path: '/users',
+    tags: ['users'],
+  })
+  .input(
+    z.object({
+      cursor: z.string().optional(),
+      limit: z.coerce.number().int().min(1).max(100).prefault(20),
+      searchTerm: z.string().trim().optional().prefault(''),
+    }).prefault({})
+  )
+  .output(
+    z.object({
+      items: z.array(zUser()),
+      nextCursor: z.string().optional(),
+      total: z.number(),
+    })
+  )
+  .handler(async ({ context, input }) => {
+    // Implementation...
+  })
+```
+
+Key components:
+- **Procedure type** - `publicProcedure()` or `protectedProcedure({ permissions })`
+- **Route** - HTTP method, path, and OpenAPI tags
+- **Input schema** - Zod schema for request validation
+- **Output schema** - Zod schema for response validation
+- **Handler** - Business logic implementation
+
+### 2. Client Layer (`src/lib/orpc/client.ts`)
+
+The client creates a type-safe API client with React Query integration:
+
+```typescript
+const link = new RPCLink({
+  url: typeof window === 'undefined'
+    ? `${envClient.VITE_BASE_URL}/api/rpc`
+    : `${window.location.origin}/api/rpc`,
+  interceptors: [
+    onError((error) => {
+      if (error instanceof ORPCError && error.message === 'DEMO_MODE_ENABLED') {
+        openDemoModeDrawer();
+      }
+    }),
+  ],
+});
+
+const orpcClient: RouterClient<Router> = createORPCClient(link);
+export const orpc = createORPCReactQueryUtils(orpcClient);
+```
+
+This provides the `orpc` object used throughout the application for API calls.
+
+### 3. Type Layer (`src/lib/orpc/types.ts`)
+
+Types are automatically inferred from the server router:
+
+```typescript
+import type {
+  Inputs as OrpcInputs,
+  Outputs as OrpcOutputs,
+  Router as OrpcRouter,
+} from '@/server/router';
+
+export type Inputs = OrpcInputs;
+export type Outputs = OrpcOutputs;
+export type Router = OrpcRouter;
+```
+
+This ensures that client code has access to the exact same types as the server, with no manual synchronization required.
+
+## OpenAPI Documentation
+
+The API automatically generates OpenAPI documentation accessible at:
+
+- **Application API**: `/api/openapi/app` - Interactive documentation for all application endpoints
+- **Auth API**: `/api/openapi/auth` - Better Auth API documentation
+
+The OpenAPI spec is generated from the same Zod schemas used for runtime validation, ensuring documentation always matches implementation.
+
+## Error Handling
+
+The API uses `ORPCError` for consistent error responses:
+
+```typescript
+throw new ORPCError('NOT_FOUND');
+throw new ORPCError('FORBIDDEN');
+throw new ORPCError('CONFLICT', {
+  message: 'Unique constraint violation',
+  data: { target: error.meta?.target },
+});
+```
+
+Prisma errors are automatically transformed into appropriate API errors:
+- `P2002` (unique constraint) → `CONFLICT`
+- `P2025` (record not found) → `NOT_FOUND`
+- `P2003` (foreign key violation) → `BAD_REQUEST`
+
+## Performance Monitoring
+
+The API includes built-in performance monitoring via `Server-Timing` headers:
+
+- `auth` - Authentication duration
+- `global` - Total request duration
+- `db-{model}-{operation}` - Individual database query timings
+
+These headers can be viewed in browser DevTools to identify performance bottlenecks.
+
+## Demo Mode
+
+When `VITE_IS_DEMO` is enabled, all non-GET requests are blocked:
+
+```typescript
+if (envClient.VITE_IS_DEMO && procedure['~orpc'].route.method !== 'GET') {
+  throw new ORPCError('METHOD_NOT_SUPPORTED', {
+    message: 'DEMO_MODE_ENABLED',
+  });
+}
+```
+
+The client intercepts these errors and displays a demo mode notification.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Getting Started" icon="rocket" href="/api/getting-started">
+    Learn how to use the API in your components
+  </Card>
+  <Card title="Authentication" icon="shield-halved" href="/concepts/authentication">
+    Understand the authentication system
+  </Card>
+</CardGroup>

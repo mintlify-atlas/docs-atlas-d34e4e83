@@ -1,0 +1,696 @@
+---
+title: Storybook
+description: Develop and document UI components with Storybook in Start UI [web]
+---
+
+Start UI [web] includes [Storybook](https://storybook.js.org/) for component development, documentation, and visual testing.
+
+## Running Storybook
+
+<CodeGroup>
+
+```bash Development
+pnpm storybook
+```
+
+```bash Build
+pnpm storybook:build
+```
+
+</CodeGroup>
+
+Storybook runs at `http://localhost:6006`
+
+## Configuration
+
+### Main Configuration
+
+Storybook is configured in `.storybook/main.ts`:
+
+```typescript .storybook/main.ts
+import type { StorybookConfig } from '@storybook/react-vite';
+
+const config: StorybookConfig = {
+  stories: ['../**/*.stories.@(js|jsx|mjs|ts|tsx)'],
+  addons: [
+    '@vueless/storybook-dark-mode',
+    '@storybook/addon-a11y',
+    '@storybook/addon-docs',
+  ],
+  framework: {
+    name: '@storybook/react-vite',
+    options: {
+      builder: {
+        viteConfigPath: './vite.storybook.ts',
+      },
+    },
+  },
+};
+
+export default config;
+```
+
+### Preview Configuration
+
+Global decorators and parameters in `.storybook/preview.tsx`:
+
+```tsx .storybook/preview.tsx
+import type { Preview } from '@storybook/react-vite';
+import { useDarkMode } from '@vueless/storybook-dark-mode';
+import { StrictMode, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+
+import '@/styles/app.css';
+import './preview.css';
+
+import {
+  AVAILABLE_LANGUAGES,
+  DEFAULT_LANGUAGE_KEY,
+} from '@/lib/i18n/constants';
+import i18nGlobal from '@/lib/i18n';
+import { Providers } from '@/providers';
+
+const preview: Preview = {
+  parameters: {
+    layout: 'padded',
+    backgrounds: { disable: true },
+    darkMode: { stylePreview: true },
+    docs: { codePanel: true },
+  },
+  
+  initialGlobals: {
+    locale: DEFAULT_LANGUAGE_KEY,
+  },
+  
+  globalTypes: {
+    locale: {
+      name: 'Locale',
+      description: 'Internationalization locale',
+      toolbar: {
+        icon: 'globe',
+        items: AVAILABLE_LANGUAGES.map(({ key }) => ({
+          value: key,
+          title: i18nGlobal.t(`common:languages.values.${key}`, {
+            lng: 'en',
+          }),
+        })),
+      },
+    },
+  },
+  
+  decorators: [
+    (story, context) => {
+      const isDarkMode = useDarkMode();
+      const { i18n } = useTranslation();
+
+      useEffect(() => {
+        i18n.changeLanguage(context.globals.locale);
+        const languageConfig = AVAILABLE_LANGUAGES.find(
+          ({ key }) => key === context.globals.locale
+        );
+        if (languageConfig) {
+          document.documentElement.lang = languageConfig.key;
+          document.documentElement.dir = languageConfig.dir ?? 'ltr';
+          document.documentElement.style.fontSize = 
+            `${(languageConfig.fontScale ?? 1) * 100}%`;
+        }
+      }, [context.globals.locale, i18n]);
+
+      return (
+        <Providers forcedTheme={isDarkMode ? 'dark' : 'light'}>
+          <StrictMode>
+            {story(context)}
+          </StrictMode>
+        </Providers>
+      );
+    },
+  ],
+};
+
+export default preview;
+```
+
+## Writing Stories
+
+### Basic Story
+
+Create a story file for a component:
+
+```tsx src/components/ui/button.stories.tsx
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { Button } from './button';
+
+export default {
+  title: 'Components/Button',
+  component: Button,
+} satisfies Meta<typeof Button>;
+
+type Story = StoryObj<typeof Button>;
+
+export const Default: Story = {
+  args: {
+    children: 'Click me',
+  },
+};
+
+export const Primary: Story = {
+  args: {
+    variant: 'primary',
+    children: 'Primary Button',
+  },
+};
+
+export const Secondary: Story = {
+  args: {
+    variant: 'secondary',
+    children: 'Secondary Button',
+  },
+};
+
+export const Loading: Story = {
+  args: {
+    loading: true,
+    children: 'Loading...',
+  },
+};
+
+export const Disabled: Story = {
+  args: {
+    disabled: true,
+    children: 'Disabled',
+  },
+};
+```
+
+### Multiple Variants
+
+Show all variants in one story:
+
+```tsx src/components/ui/button.stories.tsx
+export const AllVariants = () => {
+  return (
+    <div className="flex gap-2">
+      <Button variant="primary">Primary</Button>
+      <Button variant="secondary">Secondary</Button>
+      <Button variant="destructive">Destructive</Button>
+      <Button variant="outline">Outline</Button>
+      <Button variant="ghost">Ghost</Button>
+    </div>
+  );
+};
+```
+
+### Form Stories
+
+Real example from `src/components/form/docs.stories.tsx`:
+
+```tsx src/components/form/docs.stories.tsx
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Meta } from '@storybook/react-vite';
+import { useForm } from 'react-hook-form';
+import { z } from 'zod';
+import { zu } from '@/lib/zod/zod-utils';
+import {
+  Form,
+  FormField,
+  FormFieldController,
+  FormFieldLabel,
+  FormFieldHelper,
+} from '@/components/form';
+import { Button } from '@/components/ui/button';
+
+export default {
+  title: 'Form/Form',
+} satisfies Meta<typeof Form>;
+
+const zFormSchema = () =>
+  z.object({
+    name: zu.fieldText.required(),
+    other: zu.fieldText.required(),
+  });
+
+export const Default = () => {
+  const form = useForm({
+    mode: 'onBlur',
+    resolver: zodResolver(zFormSchema()),
+    defaultValues: {
+      name: '',
+      other: '',
+    },
+  });
+
+  return (
+    <Form {...form} onSubmit={console.log}>
+      <div className="flex flex-col gap-4">
+        <FormField size="lg">
+          <FormFieldLabel>Name</FormFieldLabel>
+          <FormFieldController 
+            control={form.control} 
+            type="text" 
+            name="name" 
+          />
+          <FormFieldHelper>This is a helper text</FormFieldHelper>
+        </FormField>
+        
+        <div>
+          <Button type="submit">Submit</Button>
+        </div>
+      </div>
+    </Form>
+  );
+};
+```
+
+### Upload Component Stories
+
+Real example from `src/components/upload/upload-button.stories.tsx`:
+
+```tsx src/components/upload/upload-button.stories.tsx
+import type { Meta } from '@storybook/react-vite';
+import { UploadIcon } from 'lucide-react';
+import { UploadButton } from './upload-button';
+
+export default {
+  title: 'Upload/UploadButton',
+} satisfies Meta<typeof UploadButton>;
+
+export const Default = () => {
+  return (
+    <UploadButton
+      uploadRoute="bookCover"
+      inputProps={{
+        accept: 'image/png,image/jpeg,image/gif',
+      }}
+      onSuccess={(file) => console.log('uploaded file', file)}
+    />
+  );
+};
+
+export const WithChildren = () => {
+  return (
+    <div className="flex space-x-2">
+      <UploadButton
+        uploadRoute="bookCover"
+        onSuccess={(file) => console.log('uploaded file', file)}
+      >
+        <UploadIcon />
+        Upload a new file
+      </UploadButton>
+
+      <UploadButton
+        uploadRoute="bookCover"
+        onSuccess={(file) => console.log('uploaded file', file)}
+      >
+        Upload a new file
+        <UploadIcon />
+      </UploadButton>
+    </div>
+  );
+};
+
+export const Disabled = () => {
+  return (
+    <UploadButton
+      disabled
+      uploadRoute="bookCover"
+      onSuccess={(file) => console.log('uploaded file', file)}
+    >
+      <UploadIcon />
+      Upload a new file
+    </UploadButton>
+  );
+};
+```
+
+## Story Organization
+
+### File Structure
+
+```
+src/
+├── components/
+│   ├── ui/
+│   │   ├── button.tsx
+│   │   ├── button.stories.tsx
+│   │   ├── input.tsx
+│   │   └── input.stories.tsx
+│   ├── form/
+│   │   ├── form.tsx
+│   │   ├── docs.stories.tsx
+│   │   ├── field-text/
+│   │   │   └── docs.stories.tsx
+```
+
+### Title Hierarchy
+
+```tsx
+export default {
+  title: 'Components/Button',        // Category/Component
+  title: 'Form/Fields/Text',         // Nested categories
+  title: 'Pages/Dashboard',          // Page-level stories
+} satisfies Meta;
+```
+
+## Features
+
+### Dark Mode
+
+Toggle dark mode with the toolbar button. Components automatically adapt:
+
+```tsx
+export const DarkModeExample = () => {
+  return (
+    <div className="p-4 bg-background text-foreground">
+      <h1 className="text-2xl font-bold">Dark Mode Support</h1>
+      <p className="text-muted-foreground">This text adapts to theme</p>
+    </div>
+  );
+};
+```
+
+### Internationalization
+
+Switch languages using the locale toolbar:
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+export const TranslatedComponent = () => {
+  const { t } = useTranslation();
+  
+  return (
+    <div>
+      <h1>{t('common:welcome')}</h1>
+      <p>{t('common:description')}</p>
+    </div>
+  );
+};
+```
+
+### Accessibility Testing
+
+The a11y addon automatically checks accessibility:
+
+```tsx
+export const AccessibleButton = () => {
+  return (
+    <button aria-label="Close dialog">
+      ×
+    </button>
+  );
+};
+```
+
+View violations in the Accessibility panel.
+
+## Documentation
+
+### MDX Stories
+
+Write documentation with MDX:
+
+```mdx src/components/ui/button.stories.mdx
+import { Meta, Canvas, Story } from '@storybook/blocks';
+import { Button } from './button';
+
+<Meta title="Components/Button" component={Button} />
+
+# Button
+
+Buttons allow users to take actions with a single tap.
+
+## Usage
+
+<Canvas>
+  <Story name="Basic">
+    <Button>Click me</Button>
+  </Story>
+</Canvas>
+
+## Variants
+
+<Canvas>
+  <Story name="Variants">
+    <div className="flex gap-2">
+      <Button variant="primary">Primary</Button>
+      <Button variant="secondary">Secondary</Button>
+    </div>
+  </Story>
+</Canvas>
+```
+
+### JSDoc Comments
+
+Document component props:
+
+```tsx
+interface ButtonProps {
+  /**
+   * Button variant style
+   * @default 'primary'
+   */
+  variant?: 'primary' | 'secondary' | 'outline';
+  
+  /**
+   * Show loading spinner
+   */
+  loading?: boolean;
+  
+  /**
+   * Disable the button
+   */
+  disabled?: boolean;
+}
+```
+
+Props appear in the Storybook Docs tab.
+
+## Advanced Patterns
+
+### Args with Actions
+
+```tsx
+import { action } from '@storybook/addon-actions';
+
+export const WithAction: Story = {
+  args: {
+    onClick: action('clicked'),
+    children: 'Click to see action',
+  },
+};
+```
+
+### Controls
+
+```tsx
+export default {
+  title: 'Components/Button',
+  component: Button,
+  argTypes: {
+    variant: {
+      control: 'select',
+      options: ['primary', 'secondary', 'outline'],
+    },
+    size: {
+      control: 'radio',
+      options: ['sm', 'md', 'lg'],
+    },
+    disabled: {
+      control: 'boolean',
+    },
+  },
+} satisfies Meta<typeof Button>;
+```
+
+### Play Function
+
+Test interactions:
+
+```tsx
+import { userEvent, within } from '@storybook/test';
+
+export const WithInteraction: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const button = canvas.getByRole('button');
+    await userEvent.click(button);
+  },
+};
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Create stories for all UI components">
+
+Every reusable component should have a story:
+
+```tsx
+src/components/ui/button.stories.tsx
+src/components/ui/input.stories.tsx
+src/components/ui/select.stories.tsx
+```
+
+</Step>
+
+<Step title="Show all component states">
+
+```tsx
+export const AllStates = () => (
+  <div className="flex flex-col gap-4">
+    <Button>Default</Button>
+    <Button loading>Loading</Button>
+    <Button disabled>Disabled</Button>
+  </div>
+);
+```
+
+</Step>
+
+<Step title="Use realistic data">
+
+```tsx
+export const UserCard = () => (
+  <Card>
+    <CardContent>
+      <h3>John Doe</h3>
+      <p>john@example.com</p>
+    </CardContent>
+  </Card>
+);
+```
+
+</Step>
+
+<Step title="Document edge cases">
+
+```tsx
+export const LongText = () => (
+  <Button>
+    This is a very long button text that might wrap
+  </Button>
+);
+
+export const EmptyState = () => (
+  <Card>
+    <CardContent>No items found</CardContent>
+  </Card>
+);
+```
+
+</Step>
+
+</Steps>
+
+## Integration with Development
+
+### Component Development Workflow
+
+<Steps>
+
+<Step title="Create component">
+
+```tsx src/components/ui/badge.tsx
+export function Badge({ children, variant = 'default' }) {
+  return (
+    <span className={cn('badge', `badge-${variant}`)}>
+      {children}
+    </span>
+  );
+}
+```
+
+</Step>
+
+<Step title="Create story">
+
+```tsx src/components/ui/badge.stories.tsx
+export default {
+  title: 'Components/Badge',
+  component: Badge,
+} satisfies Meta<typeof Badge>;
+
+export const Default: Story = {
+  args: { children: 'Badge' },
+};
+```
+
+</Step>
+
+<Step title="Develop in Storybook">
+
+```bash
+pnpm storybook
+```
+
+Make changes and see them instantly.
+
+</Step>
+
+<Step title="Use in application">
+
+```tsx
+import { Badge } from '@/components/ui/badge';
+
+<Badge variant="success">Active</Badge>
+```
+
+</Step>
+
+</Steps>
+
+## Building and Deployment
+
+### Build Storybook
+
+```bash
+pnpm storybook:build
+```
+
+Outputs to `public/storybook/`
+
+### Deploy to Production
+
+The built Storybook is accessible at `/storybook` in your deployed app.
+
+### Static Deployment
+
+Deploy Storybook separately:
+
+```bash
+pnpm storybook:build
+# Deploy storybook-static/ to hosting
+```
+
+## Troubleshooting
+
+### Stories Not Showing
+
+Ensure the file matches the glob pattern:
+
+```typescript
+stories: ['../**/*.stories.@(js|jsx|mjs|ts|tsx)']
+```
+
+### Styling Issues
+
+Import styles in `.storybook/preview.tsx`:
+
+```tsx
+import '@/styles/app.css';
+```
+
+### Provider Issues
+
+Wrap stories with necessary providers:
+
+```tsx
+decorators: [
+  (story) => (
+    <Providers>
+      {story()}
+    </Providers>
+  ),
+],
+```

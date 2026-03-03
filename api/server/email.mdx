@@ -1,0 +1,252 @@
+---
+title: 'email'
+description: 'Email sending utilities using React Email and Nodemailer'
+---
+
+## Overview
+
+The email module provides utilities for sending emails using React Email templates and Nodemailer transport. It includes a preview route for development.
+
+## Location
+
+`src/server/email.tsx`
+
+## Exports
+
+### sendEmail
+
+Sends an email using a React Email template.
+
+```typescript
+import { sendEmail } from '@/server/email';
+```
+
+**Type Signature:**
+
+```typescript
+const sendEmail = async ({
+  template,
+  ...options
+}: Omit<MailOptions, 'html'> &
+  Required<Pick<MailOptions, 'subject'>> & { template: ReactElement }) => Promise<void>
+```
+
+**Parameters:**
+
+- `template` (required): A React element representing the email template
+- `subject` (required): Email subject line
+- `to`: Recipient email address(es)
+- `cc`: CC email address(es)
+- `bcc`: BCC email address(es)
+- `from`: Sender email (defaults to `EMAIL_FROM` from env)
+- `replyTo`: Reply-to email address
+- `attachments`: Email attachments
+- ...all other Nodemailer `MailOptions` except `html`
+
+**Returns:** `Promise<void>`
+
+### previewEmailRoute
+
+Generates an email preview route handler for development.
+
+```typescript
+import { previewEmailRoute } from '@/server/email';
+```
+
+**Type Signature:**
+
+```typescript
+const previewEmailRoute = async (
+  template: string,
+  props: Record<string, string>
+) => Promise<Response>
+```
+
+**Parameters:**
+
+- `template`: Template filename (without extension) from `src/emails/templates/`
+- `props`: Props to pass to the template component
+
+**Returns:** `Response` with rendered HTML or 404 if template not found
+
+## Configuration
+
+### Email Transport
+
+The module uses Nodemailer with configuration from environment variables:
+
+```typescript
+const transport = nodemailer.createTransport(envServer.EMAIL_SERVER);
+```
+
+### Demo Mode
+
+In demo mode, emails are not sent:
+
+```typescript
+if (envClient.VITE_IS_DEMO) {
+  return;
+}
+```
+
+## Usage
+
+### Sending an Email
+
+```typescript
+import { sendEmail } from '@/server/email';
+import TemplateWelcome from '@/emails/templates/welcome';
+
+await sendEmail({
+  to: 'user@example.com',
+  subject: 'Welcome to Start UI!',
+  template: <TemplateWelcome name="John" />,
+});
+```
+
+### With Multiple Recipients
+
+```typescript
+import { sendEmail } from '@/server/email';
+import TemplateNewsletter from '@/emails/templates/newsletter';
+
+await sendEmail({
+  to: ['user1@example.com', 'user2@example.com'],
+  subject: 'Monthly Newsletter',
+  template: <TemplateNewsletter month="January" />,
+});
+```
+
+### With CC and BCC
+
+```typescript
+import { sendEmail } from '@/server/email';
+import TemplateNotification from '@/emails/templates/notification';
+
+await sendEmail({
+  to: 'user@example.com',
+  cc: 'manager@example.com',
+  bcc: 'archive@example.com',
+  subject: 'Important Notification',
+  template: <TemplateNotification message="Action required" />,
+});
+```
+
+### With Attachments
+
+```typescript
+import { sendEmail } from '@/server/email';
+import TemplateInvoice from '@/emails/templates/invoice';
+
+await sendEmail({
+  to: 'customer@example.com',
+  subject: 'Your Invoice',
+  template: <TemplateInvoice invoiceNumber="INV-001" />,
+  attachments: [
+    {
+      filename: 'invoice.pdf',
+      path: '/path/to/invoice.pdf',
+    },
+  ],
+});
+```
+
+### Preview Route
+
+Useful for developing and testing email templates:
+
+```typescript
+import { previewEmailRoute } from '@/server/email';
+
+// In your API route
+export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const template = url.searchParams.get('template') ?? 'welcome';
+  const props = Object.fromEntries(url.searchParams.entries());
+
+  return previewEmailRoute(template, props);
+}
+```
+
+Then access in browser:
+```
+http://localhost:3000/api/email/preview?template=login-code&code=123456&language=en
+```
+
+## Email Templates
+
+Email templates are located in `src/emails/templates/` and should:
+
+1. Export a React component as default
+2. Accept a `language` prop for internationalization
+3. Use React Email components for structure
+
+**Example Template:**
+
+```typescript
+import { Html, Text, Button } from '@react-email/components';
+
+interface TemplateWelcomeProps {
+  language: string;
+  name: string;
+}
+
+export default function TemplateWelcome({
+  language,
+  name,
+}: TemplateWelcomeProps) {
+  return (
+    <Html>
+      <Text>Welcome {name}!</Text>
+      <Button href="https://example.com">Get Started</Button>
+    </Html>
+  );
+}
+```
+
+## Environment Variables
+
+**Server:**
+- `EMAIL_SERVER`: Nodemailer transport configuration (SMTP connection string)
+- `EMAIL_FROM`: Default sender email address
+
+**Client:**
+- `VITE_IS_DEMO`: Demo mode flag (disables email sending)
+
+**Example EMAIL_SERVER:**
+```bash
+EMAIL_SERVER="smtp://username:password@smtp.example.com:587"
+```
+
+## Error Handling
+
+### Template Not Found
+
+When using `previewEmailRoute`, if the template doesn't exist:
+
+```typescript
+return new Response('Template not found', {
+  status: 404,
+});
+```
+
+### Email Sending Errors
+
+Nodemailer errors are propagated and should be caught:
+
+```typescript
+try {
+  await sendEmail({
+    to: 'user@example.com',
+    subject: 'Test',
+    template: <TemplateTest />,
+  });
+} catch (error) {
+  console.error('Failed to send email:', error);
+}
+```
+
+## Related
+
+- [auth](/api/server/auth) - Uses email for OTP delivery
+- [logger](/api/server/logger) - Logging configuration

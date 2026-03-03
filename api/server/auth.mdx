@@ -1,0 +1,222 @@
+---
+title: 'auth'
+description: 'Better Auth configuration and utilities for authentication'
+---
+
+## Overview
+
+The auth module provides authentication configuration using [Better Auth](https://better-auth.com/). It includes support for email OTP, social providers (GitHub), admin roles, and Expo mobile apps.
+
+## Location
+
+`src/server/auth.tsx`
+
+## Exports
+
+### auth
+
+The main Better Auth instance configured for the application.
+
+```typescript
+import { auth } from '@/server/auth';
+```
+
+**Type:** `BetterAuth`
+
+## Configuration
+
+### Base Configuration
+
+```typescript
+baseURL: {
+  allowedHosts: [
+    new URL(envClient.VITE_BASE_URL).host,
+    ...(envServer.AUTH_ALLOWED_HOSTS ?? []),
+  ],
+}
+```
+
+### Session Configuration
+
+```typescript
+session: {
+  expiresIn: envServer.AUTH_SESSION_EXPIRATION_IN_SECONDS,
+  updateAge: envServer.AUTH_SESSION_UPDATE_AGE_IN_SECONDS,
+}
+```
+
+- **expiresIn**: Session expiration time in seconds
+- **updateAge**: How often to update the session in seconds
+
+### Database
+
+Uses Prisma adapter with PostgreSQL:
+
+```typescript
+database: prismaAdapter(db, {
+  provider: 'postgresql',
+})
+```
+
+### User Fields
+
+Custom user fields added to the default Better Auth user model:
+
+```typescript
+user: {
+  additionalFields: {
+    onboardedAt: {
+      type: 'date',
+    },
+  },
+}
+```
+
+### Error Handling
+
+```typescript
+onAPIError: {
+  throw: true,
+  errorURL: '/login/error',
+}
+```
+
+## Plugins
+
+### expo()
+
+Enables authentication for Expo native apps. Can be removed if not needed.
+
+### openAPI()
+
+```typescript
+openAPI({
+  disableDefaultReference: true, // Uses custom exposition in /routes/api/openapi folder
+})
+```
+
+### admin()
+
+Provides role-based access control and permissions:
+
+```typescript
+admin({
+  ...permissions,
+})
+```
+
+### emailOTP()
+
+Email-based one-time password authentication:
+
+```typescript
+emailOTP({
+  disableSignUp: !AUTH_SIGNUP_ENABLED,
+  expiresIn: AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES * 60,
+  // Use predictable mocked code in dev and demo
+  ...(import.meta.env.DEV || envClient.VITE_IS_DEMO
+    ? { generateOTP: () => AUTH_EMAIL_OTP_MOCKED }
+    : undefined),
+  async sendVerificationOTP({ email, otp, type }) {
+    // Sends OTP emails based on type: sign-in, email-verification, forget-password, change-email
+  },
+})
+```
+
+**Configuration Options:**
+- `disableSignUp`: Whether to disable user registration
+- `expiresIn`: OTP expiration time in seconds
+- `generateOTP`: Custom OTP generator (mocked in dev/demo mode)
+- `sendVerificationOTP`: Custom email sender for OTP codes
+
+**OTP Types:**
+- `sign-in`: Login code email (implemented)
+- `email-verification`: Email verification (not implemented)
+- `forget-password`: Password reset (not implemented)
+- `change-email`: Email change verification (not implemented)
+
+## Social Providers
+
+### GitHub
+
+```typescript
+socialProviders: {
+  github: {
+    enabled: !!(envServer.GITHUB_CLIENT_ID && envServer.GITHUB_CLIENT_SECRET),
+    clientId: envServer.GITHUB_CLIENT_ID!,
+    clientSecret: envServer.GITHUB_CLIENT_SECRET!,
+    disableImplicitSignUp: !AUTH_SIGNUP_ENABLED,
+  },
+}
+```
+
+GitHub OAuth is enabled when `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET` environment variables are set.
+
+## Database Hooks
+
+### User Hooks
+
+Prevents user creation and updates in demo mode:
+
+```typescript
+databaseHooks: {
+  user: {
+    create: {
+      before: async (user) => {
+        if (envClient.VITE_IS_DEMO) throw new Error('DEMO MODE');
+        return { data: user };
+      },
+    },
+    update: {
+      before: async (user) => {
+        if (envClient.VITE_IS_DEMO) throw new Error('DEMO MODE');
+        return { data: user };
+      },
+    },
+  },
+}
+```
+
+## Environment Variables
+
+**Server:**
+- `AUTH_ALLOWED_HOSTS`: Additional allowed hosts for authentication
+- `AUTH_SESSION_EXPIRATION_IN_SECONDS`: Session expiration time
+- `AUTH_SESSION_UPDATE_AGE_IN_SECONDS`: Session update interval
+- `AUTH_TRUSTED_ORIGINS`: Trusted origins for CORS
+- `GITHUB_CLIENT_ID`: GitHub OAuth client ID
+- `GITHUB_CLIENT_SECRET`: GitHub OAuth client secret
+
+**Client:**
+- `VITE_BASE_URL`: Application base URL
+- `VITE_IS_DEMO`: Demo mode flag
+
+**Feature Config:**
+- `AUTH_EMAIL_OTP_EXPIRATION_IN_MINUTES`: OTP expiration in minutes
+- `AUTH_EMAIL_OTP_MOCKED`: Mocked OTP code for development
+- `AUTH_SIGNUP_ENABLED`: Whether user registration is enabled
+
+## Usage Example
+
+```typescript
+import { auth } from '@/server/auth';
+
+// Use in API routes or server functions
+export async function GET(request: Request) {
+  const session = await auth.api.getSession({
+    headers: request.headers,
+  });
+
+  if (!session) {
+    return new Response('Unauthorized', { status: 401 });
+  }
+
+  return Response.json({ user: session.user });
+}
+```
+
+## Related
+
+- [database](/api/server/database) - Prisma client used for auth storage
+- [email](/api/server/email) - Email utilities used for OTP delivery
+- [logger](/api/server/logger) - Logging configuration

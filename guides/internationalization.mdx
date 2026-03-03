@@ -1,0 +1,641 @@
+---
+title: Internationalization
+description: Add multi-language support with i18next and react-i18next in Start UI [web]
+---
+
+Start UI [web] includes full internationalization (i18n) support using [i18next](https://www.i18next.com/) and [react-i18next](https://react.i18next.com/).
+
+## Configuration
+
+### i18next Setup
+
+The i18n configuration is in `src/lib/i18n/config.ts`:
+
+```typescript src/lib/i18n/config.ts
+import { InitOptions } from 'i18next';
+import { keys } from 'remeda';
+import { DEFAULT_LANGUAGE_KEY, DEFAULT_NAMESPACE } from './constants';
+import locales from '@/locales';
+
+export const i18nConfig: InitOptions = {
+  defaultNS: DEFAULT_NAMESPACE,
+  ns: keys(locales[DEFAULT_LANGUAGE_KEY]),
+  resources: locales,
+  fallbackLng: DEFAULT_LANGUAGE_KEY,
+  supportedLngs: keys(locales),
+  
+  detection: {
+    caches: ['cookie'],
+    cookieMinutes: 43200, // 30 days
+    cookieOptions: { path: '/', sameSite: 'lax' },
+  },
+
+  returnNull: false,
+  
+  interpolation: {
+    escapeValue: false, // React already escapes
+  },
+};
+```
+
+### Initialization
+
+Initialize i18next with React integration:
+
+```typescript src/lib/i18n/index.ts
+import dayjs from 'dayjs';
+import i18n from 'i18next';
+import LanguageDetector from 'i18next-browser-languagedetector';
+import { initReactI18next } from 'react-i18next';
+import { i18nConfig } from './config';
+
+i18n
+  .use(LanguageDetector)
+  .use(initReactI18next)
+  .init(i18nConfig);
+
+export const syncLanguage = (langKey: string) => {
+  dayjs.locale(langKey);
+};
+
+i18n.on('languageChanged', (langKey) => syncLanguage(langKey));
+
+export default i18n;
+```
+
+### Language Constants
+
+Define available languages in `src/lib/i18n/constants.ts`:
+
+```typescript src/lib/i18n/constants.ts
+export const DEFAULT_LANGUAGE_KEY = 'en';
+export const DEFAULT_NAMESPACE = 'common';
+
+export const AVAILABLE_LANGUAGES = [
+  {
+    key: 'en',
+    label: 'English',
+    dir: 'ltr',
+  },
+  {
+    key: 'fr',
+    label: 'Français',
+    dir: 'ltr',
+  },
+  {
+    key: 'ar',
+    label: 'العربية',
+    dir: 'rtl',
+    fontScale: 1.1,
+  },
+] as const;
+```
+
+## Translation Files
+
+### File Structure
+
+Organize translations by namespace:
+
+```
+src/locales/
+├── en/
+│   ├── common.json
+│   ├── auth.json
+│   ├── user.json
+│   ├── book.json
+│   └── emails.json
+├── fr/
+│   ├── common.json
+│   ├── auth.json
+│   └── ...
+└── index.ts
+```
+
+### Translation Examples
+
+<CodeGroup>
+
+```json src/locales/en/common.json
+{
+  "languages": {
+    "label": "Language",
+    "values": {
+      "en": "English",
+      "fr": "French",
+      "ar": "Arabic"
+    }
+  },
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back"
+  },
+  "form": {
+    "email": {
+      "label": "Email Address",
+      "placeholder": "you@example.com"
+    },
+    "name": {
+      "label": "Name",
+      "placeholder": "Enter your name"
+    }
+  }
+}
+```
+
+```json src/locales/en/auth.json
+{
+  "pageLogin": {
+    "title": "Sign in to your account",
+    "description": "Enter your email to receive a login code",
+    "loginWithEmail": "Continue with Email",
+    "loginWithSocial": "Continue with {{provider}}",
+    "spacer": "Or continue with"
+  },
+  "pageLoginVerify": {
+    "title": "Check your email",
+    "description": "We sent a code to <b>{{email}}</b>",
+    "confirm": "Verify Code",
+    "expireHint": "This code will expire in {{expiration}} minutes."
+  },
+  "common": {
+    "email": {
+      "label": "Email"
+    },
+    "otp": {
+      "label": "Verification Code",
+      "invalid": "Invalid code"
+    }
+  },
+  "errorCode": {
+    "UNKNOWN_ERROR": "An error occurred",
+    "INVALID_EMAIL": "Invalid email address",
+    "INVALID_OTP": "Invalid or expired code"
+  }
+}
+```
+
+```json src/locales/fr/common.json
+{
+  "languages": {
+    "label": "Langue",
+    "values": {
+      "en": "Anglais",
+      "fr": "Français",
+      "ar": "Arabe"
+    }
+  },
+  "actions": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "back": "Retour"
+  }
+}
+```
+
+</CodeGroup>
+
+### Index File
+
+Export all translations:
+
+```typescript src/locales/index.ts
+import common_en from './en/common.json';
+import auth_en from './en/auth.json';
+import user_en from './en/user.json';
+
+import common_fr from './fr/common.json';
+import auth_fr from './fr/auth.json';
+import user_fr from './fr/user.json';
+
+const locales = {
+  en: {
+    common: common_en,
+    auth: auth_en,
+    user: user_en,
+  },
+  fr: {
+    common: common_fr,
+    auth: auth_fr,
+    user: user_fr,
+  },
+};
+
+export default locales;
+```
+
+## Using Translations
+
+### useTranslation Hook
+
+The primary way to use translations in components:
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+export function MyComponent() {
+  const { t } = useTranslation(['common', 'auth']);
+
+  return (
+    <div>
+      <h1>{t('common:actions.save')}</h1>
+      <p>{t('auth:pageLogin.title')}</p>
+    </div>
+  );
+}
+```
+
+### Namespace Shorthand
+
+```tsx
+const { t } = useTranslation(['auth']);
+
+// With namespace prefix
+{t('auth:pageLogin.title')}
+
+// Without prefix (uses first namespace)
+{t('pageLogin.title')}
+```
+
+### Interpolation
+
+Pass variables to translations:
+
+```tsx
+const { t } = useTranslation();
+
+// Translation: "Welcome back, {{name}}!"
+<h1>{t('common:welcome', { name: user.name })}</h1>
+
+// Translation: "This code expires in {{expiration}} minutes"
+<p>{t('auth:pageLoginVerify.expireHint', { expiration: 5 })}</p>
+```
+
+### Trans Component
+
+For translations with HTML or components:
+
+```tsx
+import { Trans } from 'react-i18next';
+
+// Translation: "We sent a code to <b>{{email}}</b>"
+<Trans
+  t={t}
+  i18nKey="auth:pageLoginVerify.description"
+  values={{ email: 'user@example.com' }}
+  components={{ b: <strong /> }}
+/>
+```
+
+### Pluralization
+
+```json
+{
+  "items": "{{count}} item",
+  "items_plural": "{{count}} items"
+}
+```
+
+```tsx
+{t('common:items', { count: 1 })}  // "1 item"
+{t('common:items', { count: 5 })}  // "5 items"
+```
+
+## Language Switching
+
+### Language Switcher Component
+
+Create a language switcher:
+
+```tsx
+import { useTranslation } from 'react-i18next';
+import { AVAILABLE_LANGUAGES } from '@/lib/i18n/constants';
+import { Select } from '@/components/ui/select';
+
+export function LanguageSwitcher() {
+  const { i18n, t } = useTranslation();
+
+  return (
+    <Select
+      value={i18n.language}
+      onValueChange={(lang) => i18n.changeLanguage(lang)}
+      options={AVAILABLE_LANGUAGES.map(({ key, label }) => ({
+        value: key,
+        label: t(`common:languages.values.${key}`),
+      }))}
+    />
+  );
+}
+```
+
+### Programmatic Language Change
+
+```tsx
+import { useTranslation } from 'react-i18next';
+
+function MyComponent() {
+  const { i18n } = useTranslation();
+
+  const switchToFrench = () => {
+    i18n.changeLanguage('fr');
+  };
+
+  return (
+    <button onClick={switchToFrench}>
+      Switch to French
+    </button>
+  );
+}
+```
+
+## RTL Support
+
+### Configure RTL Languages
+
+```typescript
+export const AVAILABLE_LANGUAGES = [
+  {
+    key: 'ar',
+    label: 'العربية',
+    dir: 'rtl',
+    fontScale: 1.1,
+  },
+];
+```
+
+### Apply Direction
+
+```tsx
+import { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { AVAILABLE_LANGUAGES } from '@/lib/i18n/constants';
+
+export function LanguageProvider({ children }) {
+  const { i18n } = useTranslation();
+
+  useEffect(() => {
+    const language = AVAILABLE_LANGUAGES.find(
+      ({ key }) => key === i18n.language
+    );
+
+    if (language) {
+      document.documentElement.lang = language.key;
+      document.documentElement.dir = language.dir ?? 'ltr';
+      document.documentElement.style.fontSize = 
+        `${(language.fontScale ?? 1) * 100}%`;
+    }
+  }, [i18n.language]);
+
+  return children;
+}
+```
+
+## Server-side Translations
+
+### Email Templates
+
+Use translations in email templates:
+
+```tsx src/emails/templates/login-code.tsx
+import i18n from '@/lib/i18n';
+
+export const TemplateLoginCode = (props: {
+  language: string;
+  code: string;
+}) => {
+  i18n.changeLanguage(props.language);
+  
+  return (
+    <EmailLayout language={props.language}>
+      <Heading>{i18n.t('emails:loginCode.title')}</Heading>
+      <Text>{i18n.t('emails:loginCode.intro')}</Text>
+      <Text>{props.code}</Text>
+    </EmailLayout>
+  );
+};
+```
+
+### API Responses
+
+```typescript
+import i18n from '@/lib/i18n';
+
+export async function createUser(data) {
+  try {
+    // ...
+  } catch (error) {
+    if (error.code === 'P2002') {
+      throw new Error(i18n.t('user:errors.emailExists'));
+    }
+  }
+}
+```
+
+## Type Safety
+
+### TypeScript Configuration
+
+Add type safety for translations:
+
+```typescript src/lib/i18n/types.ts
+import 'react-i18next';
+import type locales from '@/locales';
+
+type Locales = typeof locales;
+type EnLocale = Locales['en'];
+
+declare module 'react-i18next' {
+  interface CustomTypeOptions {
+    defaultNS: 'common';
+    resources: EnLocale;
+  }
+}
+```
+
+This provides autocomplete and type checking:
+
+```tsx
+// ✅ Valid
+t('common:actions.save')
+
+// ❌ TypeScript error
+t('common:actions.invalid')
+```
+
+## Best Practices
+
+<Steps>
+
+<Step title="Use namespaces to organize translations">
+
+```tsx
+// Good: Organized by feature
+const { t } = useTranslation(['auth', 'common']);
+
+// Avoid: Single large translation file
+const { t } = useTranslation();
+```
+
+</Step>
+
+<Step title="Keep keys descriptive">
+
+```json
+// Good
+{
+  "pageLogin": {
+    "title": "Sign in",
+    "description": "Enter your email"
+  }
+}
+
+// Avoid
+{
+  "t1": "Sign in",
+  "d1": "Enter your email"
+}
+```
+
+</Step>
+
+<Step title="Use interpolation for dynamic content">
+
+```tsx
+// Good
+{t('user:welcome', { name: user.name })}
+
+// Avoid
+{`Welcome ${user.name}!`}
+```
+
+</Step>
+
+<Step title="Extract common translations">
+
+```json common.json
+{
+  "actions": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete"
+  }
+}
+```
+
+</Step>
+
+<Step title="Always provide fallback">
+
+```tsx
+{t('key', 'Fallback text')}
+```
+
+</Step>
+
+</Steps>
+
+## Testing with i18n
+
+### Mock Translations in Tests
+
+```tsx tests/utils.tsx
+import { I18nextProvider } from 'react-i18next';
+import i18n from '@/lib/i18n';
+
+export function renderWithI18n(component) {
+  return render(
+    <I18nextProvider i18n={i18n}>
+      {component}
+    </I18nextProvider>
+  );
+}
+```
+
+### Test Translations
+
+```tsx
+import { renderWithI18n } from 'tests/utils';
+
+test('renders translated text', () => {
+  const { getByText } = renderWithI18n(<MyComponent />);
+  expect(getByText('Save')).toBeInTheDocument();
+});
+```
+
+## Storybook Integration
+
+Storybook is configured to support all languages:
+
+```tsx .storybook/preview.tsx
+import i18nGlobal from '@/lib/i18n';
+import { AVAILABLE_LANGUAGES } from '@/lib/i18n/constants';
+
+export default {
+  globalTypes: {
+    locale: {
+      name: 'Locale',
+      toolbar: {
+        icon: 'globe',
+        items: AVAILABLE_LANGUAGES.map(({ key }) => ({
+          value: key,
+          title: i18nGlobal.t(`common:languages.values.${key}`, {
+            lng: 'en',
+          }),
+        })),
+      },
+    },
+  },
+};
+```
+
+## Adding a New Language
+
+<Steps>
+
+<Step title="Add language to constants">
+
+```typescript src/lib/i18n/constants.ts
+export const AVAILABLE_LANGUAGES = [
+  // ... existing languages
+  {
+    key: 'es',
+    label: 'Español',
+    dir: 'ltr',
+  },
+];
+```
+
+</Step>
+
+<Step title="Create translation files">
+
+Create `src/locales/es/` directory with translation files:
+- `common.json`
+- `auth.json`
+- etc.
+
+</Step>
+
+<Step title="Update index file">
+
+```typescript src/locales/index.ts
+import common_es from './es/common.json';
+import auth_es from './es/auth.json';
+
+const locales = {
+  // ... existing locales
+  es: {
+    common: common_es,
+    auth: auth_es,
+  },
+};
+```
+
+</Step>
+
+</Steps>

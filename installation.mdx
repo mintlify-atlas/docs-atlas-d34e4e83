@@ -1,0 +1,634 @@
+---
+title: Installation
+description: Comprehensive guide to installing and configuring Start UI [web]
+---
+
+## Prerequisites
+
+Before installing Start UI [web], ensure you have the following:
+
+### Required
+
+- **Node.js** 22 or later ([Download](https://nodejs.org))
+- **pnpm** package manager
+
+### Recommended
+
+- **Docker** for local PostgreSQL, MinIO, and Maildev ([Download](https://www.docker.com/))
+- **Git** for version control
+
+### Optional
+
+- PostgreSQL database (if not using Docker)
+- GitHub OAuth app credentials (for GitHub authentication)
+
+<Tip>
+  Install pnpm globally if you don't have it:
+  ```bash
+  npm install -g pnpm
+  ```
+</Tip>
+
+## Create New Project
+
+<Steps>
+  <Step title="Scaffold Project">
+    Use the official CLI to create a new project:
+
+    ```bash
+    pnpm create start-ui -t web myApp
+    ```
+
+    Replace `myApp` with your desired project name.
+  </Step>
+
+  <Step title="Navigate to Project">
+    ```bash
+    cd myApp
+    ```
+  </Step>
+</Steps>
+
+## Environment Configuration
+
+Start UI [web] uses environment variables for configuration. The repository includes a `.env.example` file with all available options.
+
+### Setup Environment File
+
+```bash
+cp .env.example .env
+```
+
+### Essential Variables
+
+<CodeGroup>
+```bash .env
+# Application
+VITE_PORT=3000
+VITE_BASE_URL="http://localhost:${VITE_PORT}"
+
+# Authentication (REQUIRED)
+AUTH_SECRET="your-secret-key-here"  # Generate with: npx @better-auth/cli@latest secret
+
+# Database
+DATABASE_URL="postgres://startui:startui@localhost:5432/startui"
+
+# Email
+EMAIL_SERVER="smtp://0.0.0.0:1025"
+EMAIL_FROM="Start UI <noreply@example.com>"
+```
+</CodeGroup>
+
+### Authentication Configuration
+
+<Warning>
+  **AUTH_SECRET is required!** Generate a secure secret before running the application:
+  ```bash
+  npx @better-auth/cli@latest secret
+  ```
+</Warning>
+
+#### Session Settings
+
+```bash .env
+# Session expires after 30 days
+AUTH_SESSION_EXPIRATION_IN_SECONDS=2592000
+
+# Session is updated every 1 day
+AUTH_SESSION_UPDATE_AGE_IN_SECONDS=86400
+
+# For mobile app support (optional)
+AUTH_TRUSTED_ORIGINS="start-ui-native://,start-ui-native://*"
+```
+
+#### GitHub OAuth (Optional)
+
+To enable GitHub authentication:
+
+1. Create a GitHub OAuth app at [github.com/settings/developers](https://github.com/settings/developers)
+2. Set the callback URL to: `http://localhost:3000/api/auth/callback/github`
+3. Add credentials to `.env`:
+
+```bash .env
+GITHUB_CLIENT_ID="your-github-client-id"
+GITHUB_CLIENT_SECRET="your-github-client-secret"
+```
+
+### Docker Configuration
+
+If using Docker for local services:
+
+```bash .env
+# PostgreSQL
+DOCKER_DATABASE_PORT="5432"
+DOCKER_DATABASE_NAME="startui"
+DOCKER_DATABASE_USERNAME="startui"
+DOCKER_DATABASE_PASSWORD="startui"
+
+# MinIO (S3-compatible storage)
+DOCKER_MINIO_API_PORT="9000"
+DOCKER_MINIO_UI_PORT="9001"
+DOCKER_MINIO_USERNAME="minioadmin"
+DOCKER_MINIO_PASSWORD="minioadmin"
+
+# Maildev (email testing)
+DOCKER_MAILDEV_SMTP_PORT="1025"
+DOCKER_MAILDEV_UI_PORT="1080"
+```
+
+### S3 Storage Configuration
+
+```bash .env
+S3_BUCKET_NAME="default"
+S3_HOST="127.0.0.1:9000"
+S3_ACCESS_KEY_ID="startui-access-key"
+S3_SECRET_ACCESS_KEY="startui-secret-key"
+S3_SECURE=false
+S3_FORCE_PATH_STYLE=true
+VITE_S3_BUCKET_PUBLIC_URL="http://${S3_HOST}/${S3_BUCKET_NAME}"
+```
+
+### Environment Indicators
+
+Display environment name in the UI:
+
+```bash .env
+VITE_ENV_NAME="LOCAL"
+VITE_ENV_EMOJI="🚧"
+VITE_ENV_COLOR="gold"
+```
+
+Example for staging:
+```bash .env
+VITE_ENV_NAME="STAGING"
+VITE_ENV_EMOJI="🔬"
+VITE_ENV_COLOR="teal"
+```
+
+### Demo Mode
+
+Enable read-only demo mode:
+
+```bash .env
+VITE_IS_DEMO="false"  # Set to "true" for demo mode
+```
+
+## Install Dependencies
+
+```bash
+pnpm install
+```
+
+This command:
+- Installs all npm packages
+- Generates Prisma client
+- Generates build info
+- Sets up Git hooks with Lefthook
+
+## Database Setup
+
+### Option 1: Using Docker (Recommended)
+
+<Steps>
+  <Step title="Start Docker Containers">
+    ```bash
+    pnpm dk:init
+    ```
+
+    This starts:
+    - **PostgreSQL** on port 5432
+    - **MinIO** on ports 9000 (API) and 9001 (UI)
+    - **Maildev** on ports 1025 (SMTP) and 1080 (UI)
+    - **Initial setup** for MinIO buckets
+  </Step>
+
+  <Step title="Initialize Database">
+    ```bash
+    pnpm db:init
+    ```
+
+    This runs:
+    - `pnpm db:push` - Creates tables from Prisma schema
+    - `pnpm db:seed` - Populates database with sample data
+  </Step>
+</Steps>
+
+### Option 2: External Database
+
+If you have a PostgreSQL database (local or cloud):
+
+<Steps>
+  <Step title="Update Database URL">
+    Edit `.env` with your database connection string:
+
+    ```bash .env
+    DATABASE_URL="postgresql://user:password@host:port/database"
+    ```
+
+    Examples:
+    ```bash
+    # Local PostgreSQL
+    DATABASE_URL="postgresql://postgres:password@localhost:5432/mydb"
+    
+    # Supabase
+    DATABASE_URL="postgresql://postgres:password@db.xxx.supabase.co:5432/postgres"
+    
+    # Railway
+    DATABASE_URL="postgresql://postgres:password@containers-us-west-xxx.railway.app:5432/railway"
+    ```
+  </Step>
+
+  <Step title="Push Schema">
+    ```bash
+    pnpm db:push
+    ```
+  </Step>
+
+  <Step title="Seed Database">
+    ```bash
+    pnpm db:seed
+    ```
+  </Step>
+</Steps>
+
+### Database Management Commands
+
+```bash
+# Push schema changes to database
+pnpm db:push
+
+# Open Prisma Studio (visual database editor)
+pnpm db:ui
+
+# Seed database with sample data
+pnpm db:seed
+
+# Generate Prisma Client after schema changes
+pnpm gen:prisma
+```
+
+## IDE Setup
+
+Configure your IDE for the best development experience.
+
+### VS Code
+
+<Steps>
+  <Step title="Copy Settings">
+    ```bash
+    cp .vscode/settings.example.json .vscode/settings.json
+    ```
+  </Step>
+
+  <Step title="Install Recommended Extensions">
+    The project includes recommended extensions. VS Code will prompt you to install them.
+
+    Key extensions:
+    - ESLint
+    - Prettier
+    - Prisma
+    - Tailwind CSS IntelliSense
+    - TypeScript and JavaScript Language Features
+  </Step>
+</Steps>
+
+### Zed
+
+```bash
+cp .zed/settings.example.json .zed/settings.json
+```
+
+## Start Development
+
+<Steps>
+  <Step title="Start Docker Services (if using Docker)">
+    ```bash
+    pnpm dk:start
+    ```
+    
+    Skip this if containers are already running.
+  </Step>
+
+  <Step title="Start Development Server">
+    ```bash
+    pnpm dev
+    ```
+
+    Your app will be available at:
+    ```
+    http://localhost:3000
+    ```
+  </Step>
+</Steps>
+
+### Development Tools
+
+Once running, you have access to:
+
+<CardGroup cols={2}>
+  <Card title="Main App" icon="browser">
+    `http://localhost:3000`
+    
+    Your application with all features
+  </Card>
+  
+  <Card title="API Docs" icon="code">
+    `http://localhost:3000/api/openapi/app`
+    
+    Interactive OpenAPI documentation
+  </Card>
+  
+  <Card title="Maildev" icon="envelope">
+    `http://localhost:1080`
+    
+    Catch and preview emails
+  </Card>
+  
+  <Card title="MinIO Console" icon="database">
+    `http://localhost:9001`
+    
+    Manage file storage (login: minioadmin/minioadmin)
+  </Card>
+  
+  <Card title="Prisma Studio" icon="table">
+    Run `pnpm db:ui` then visit `http://localhost:5555`
+    
+    Visual database editor
+  </Card>
+  
+  <Card title="Storybook" icon="book">
+    Run `pnpm storybook` then visit `http://localhost:6006`
+    
+    Component library and documentation
+  </Card>
+</CardGroup>
+
+## Additional Features
+
+### Email Templates
+
+Preview email templates during development:
+
+```bash
+# Preview login code email
+http://localhost:3000/api/dev/email/login-code
+
+# Preview with French translation
+http://localhost:3000/api/dev/email/login-code?language=fr
+
+# Preview with custom props
+http://localhost:3000/api/dev/email/login-code?code=123456
+```
+
+Email templates are in `src/emails/templates/` and built with React Email.
+
+### Custom Icons
+
+Generate React components from SVG files:
+
+<Steps>
+  <Step title="Add SVG Files">
+    Place SVG files in `src/components/icons/svg-sources/`
+    
+    Requirements:
+    - Prefix filename with `icon-` (e.g., `icon-external-link.svg`)
+    - Use square dimensions
+    - Fill with `#000` color (will be replaced with `currentColor`)
+  </Step>
+
+  <Step title="Generate Components">
+    ```bash
+    pnpm gen:icons
+    ```
+    
+    Components are generated in `src/components/icons/generated/`
+  </Step>
+</Steps>
+
+<Tip>
+  For consistent duotone icons, check out [Phosphor Icons](https://phosphoricons.com/)
+</Tip>
+
+### Testing
+
+#### Unit Tests (Vitest)
+
+```bash
+# Run tests in watch mode
+pnpm test
+
+# Run tests once (CI mode)
+pnpm test:ci
+
+# Open Vitest UI
+pnpm test:ui
+```
+
+#### E2E Tests (Playwright)
+
+```bash
+# Setup test context (run once)
+pnpm e2e:setup
+
+# Run E2E tests (headless)
+pnpm e2e
+
+# Open Playwright UI
+pnpm e2e:ui
+```
+
+<Warning>
+  Re-run `pnpm e2e:setup` if you make changes to your database or authentication logic. The setup creates authentication contexts for faster test execution.
+</Warning>
+
+### Storybook
+
+Develop and document components in isolation:
+
+```bash
+# Start Storybook dev server
+pnpm storybook
+
+# Build Storybook for production
+pnpm storybook:build
+```
+
+Storybook files are located next to components with `.stories.tsx` extension.
+
+## Production Build
+
+<Steps>
+  <Step title="Install Dependencies">
+    ```bash
+    pnpm install
+    ```
+  </Step>
+
+  <Step title="Build Storybook (Optional)">
+    ```bash
+    pnpm storybook:build
+    ```
+    
+    This exposes Storybook at `/storybook` in production.
+  </Step>
+
+  <Step title="Build Application">
+    ```bash
+    pnpm build
+    ```
+    
+    Creates optimized production build in `.output/`
+  </Step>
+
+  <Step title="Start Production Server">
+    ```bash
+    pnpm start
+    ```
+    
+    Runs the production server on the configured port.
+  </Step>
+</Steps>
+
+### Environment Variables for Production
+
+Update these variables for production:
+
+```bash .env.production
+# Production URL
+VITE_BASE_URL="https://yourdomain.com"
+
+# Generate a new secure secret
+AUTH_SECRET="production-secret-key"
+
+# Production database
+DATABASE_URL="postgresql://user:password@prod-host:5432/db"
+
+# Production email service (e.g., SendGrid, Mailgun)
+EMAIL_SERVER="smtp://apikey:your-key@smtp.sendgrid.net:587"
+EMAIL_FROM="Your App <noreply@yourdomain.com>"
+
+# Disable demo mode
+VITE_IS_DEMO="false"
+
+# Production logging
+LOGGER_LEVEL="info"
+LOGGER_PRETTY="false"
+```
+
+## Docker Commands Reference
+
+```bash
+# Initialize with setup (first time)
+pnpm dk:init
+
+# Start containers
+pnpm dk:start
+
+# Stop containers
+pnpm dk:stop
+
+# Remove containers and volumes (deletes all data)
+pnpm dk:clear
+```
+
+<Note>
+  The `docker-compose.yml` includes health checks for all services to ensure they're ready before dependent services start.
+</Note>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Husky/Lefthook git hooks issue">
+    If you see many changes in `.husky` folder:
+
+    ```bash
+    git config --unset core.hooksPath
+    rm -rf ./.husky
+    pnpm install
+    ```
+    
+    This fixes issues when switching from Husky to Lefthook.
+  </Accordion>
+
+  <Accordion title="Prisma Client errors">
+    Regenerate the Prisma Client:
+
+    ```bash
+    pnpm gen:prisma
+    ```
+    
+    If issues persist, delete and regenerate:
+    ```bash
+    rm -rf src/server/db/generated
+    pnpm gen:prisma
+    ```
+  </Accordion>
+
+  <Accordion title="Port conflicts">
+    If ports are already in use, update these in `.env`:
+    ```bash
+    VITE_PORT=3001
+    DOCKER_DATABASE_PORT=5433
+    DOCKER_MINIO_UI_PORT=9002
+    DOCKER_MAILDEV_UI_PORT=1081
+    ```
+    
+    Then restart services:
+    ```bash
+    pnpm dk:clear
+    pnpm dk:init
+    ```
+  </Accordion>
+
+  <Accordion title="TypeScript errors">
+    Run type checking:
+    ```bash
+    pnpm lint:ts
+    ```
+    
+    This helps identify type errors without starting the dev server.
+  </Accordion>
+
+  <Accordion title="Database connection issues">
+    Verify Docker containers are running:
+    ```bash
+    docker ps
+    ```
+    
+    Check PostgreSQL logs:
+    ```bash
+    docker compose logs postgres
+    ```
+    
+    Test database connection:
+    ```bash
+    pnpm db:ui
+    ```
+  </Accordion>
+
+  <Accordion title="Build info generation fails">
+    Manually generate build info:
+    ```bash
+    pnpm gen:build-info
+    ```
+    
+    This creates `src/features/build-info/build-info.json` with version and build metadata.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Learn the Features" icon="sparkles">
+    Explore authentication, CRUD operations, and file uploads
+  </Card>
+  <Card title="Customize Your App" icon="palette">
+    Update branding, add features, and modify components
+  </Card>
+  <Card title="Deploy to Production" icon="rocket">
+    Deploy to Vercel, Netlify, or your preferred platform
+  </Card>
+  <Card title="Join the Community" icon="github" href="https://github.com/BearStudio/start-ui-web">
+    Contribute, report issues, and get help
+  </Card>
+</CardGroup>

@@ -1,0 +1,124 @@
+---
+title: Config Router
+description: Public API endpoints for retrieving application configuration
+---
+
+The Config router provides public endpoints for accessing application configuration and development tools.
+
+## Authentication
+
+All endpoints in this router are public and do not require authentication (`publicProcedure`).
+
+## Endpoints
+
+### env
+
+Retrieves environment configuration information.
+
+**Method:** `GET`
+
+**Path:** `/config/env`
+
+**Permissions:** Public (no authentication required)
+
+#### Input Parameters
+
+None
+
+#### Response
+
+<ResponseField name="name" type="string">
+  Environment name (optional)
+</ResponseField>
+
+<ResponseField name="color" type="string">
+  Environment color indicator
+</ResponseField>
+
+<ResponseField name="emoji" type="string">
+  Environment emoji (optional)
+</ResponseField>
+
+<ResponseField name="isDemo" type="boolean">
+  Whether the application is running in demo mode
+</ResponseField>
+
+<ResponseField name="isDev" type="boolean">
+  Whether the application is running in development mode
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const envConfig = await orpc.config.env();
+
+if (envConfig.isDev) {
+  console.log('Running in development mode');
+}
+
+if (envConfig.isDemo) {
+  console.log('Demo mode enabled');
+}
+```
+
+#### Behavior
+
+- Returns client-side environment variables
+- `isDev` is determined by `import.meta.env.DEV`
+- Safe to call from unauthenticated contexts
+
+---
+
+### devtools
+
+Retrieves development tools configuration.
+
+**Method:** `GET`
+
+**Path:** `/config/devtools`
+
+**Permissions:** Public (no authentication required)
+
+#### Input Parameters
+
+None
+
+#### Response
+
+<ResponseField name="maildevIframeSrc" type="string | null">
+  The iframe source URL for Maildev UI (only available in development mode with Docker)
+</ResponseField>
+
+#### Example
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+
+const devtools = await orpc.config.devtools();
+
+if (devtools.maildevIframeSrc) {
+  console.log('Maildev UI available at:', devtools.maildevIframeSrc);
+}
+```
+
+#### Behavior
+
+- Returns `maildevIframeSrc` only in development mode when `DOCKER_MAILDEV_UI_PORT` is set
+- Returns `null` for `maildevIframeSrc` in production or when Maildev is not configured
+- URL format: `http://localhost:{DOCKER_MAILDEV_UI_PORT}/#/`
+
+## Environment Variables
+
+The following environment variables are exposed through the `env` endpoint:
+
+- `VITE_ENV_NAME`: Environment name
+- `VITE_ENV_COLOR`: Environment color
+- `VITE_ENV_EMOJI`: Environment emoji
+- `VITE_IS_DEMO`: Demo mode flag
+- `import.meta.env.DEV`: Development mode flag
+
+The following environment variables are used by the `devtools` endpoint:
+
+- `DOCKER_MAILDEV_UI_PORT`: Port for Maildev UI (development only)

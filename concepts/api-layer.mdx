@@ -1,0 +1,515 @@
+---
+title: API Layer
+description: oRPC setup, middleware, and type-safe API patterns
+---
+
+## Overview
+
+Start UI [web] uses **oRPC** - a type-safe RPC framework that provides end-to-end type safety from server to client. oRPC eliminates the need for API documentation and manual type definitions.
+
+## Architecture
+
+The API layer consists of:
+
+1. **Procedures** (`server/orpc.ts`) - Middleware and context setup
+2. **Routers** (`server/routers/*`) - Individual API handlers
+3. **Router composition** (`server/router.ts`) - Combine routers
+4. **HTTP handler** (`routes/api/rpc.$.ts`) - HTTP endpoint
+5. **Client** (`lib/orpc/client.ts`) - Type-safe client
+
+## Procedure Setup
+
+Procedures are defined in `src/server/orpc.ts`:
+
+```tsx src/server/orpc.ts
+import { ORPCError, os } from '@orpc/server';
+import { type ResponseHeadersPluginContext } from '@orpc/server/plugins';
+import { getRequestHeaders } from '@tanstack/react-start/server';
+
+const base = os
+  .$context<ResponseHeadersPluginContext>()
+  // Auth middleware
+  .use(async ({ next, context }) => {
+    const start = performance.now();
+    const session = await auth.api.getSession({ headers: getRequestHeaders() });
+    const duration = performance.now() - start;
+
+    context.resHeaders?.append(
+      'Server-Timing',
+      `auth;dur=${duration.toFixed(2)}`
+    );
+
+    return await next({
+      context: {
+        user: session?.user,
+        session: session?.session,
+        db,
+      },
+    });
+  })
+  
+  // Logger middleware
+  .use(async ({ next, context, procedure, path }) => {
+    const start = performance.now();
+    const meta = {
+      path: path.join('.'),
+      type: procedure['~orpc'].route.method,
+      requestId: randomUUID(),
+      userId: context.user?.id,
+    };
+
+    const loggerForMiddleWare = logger.child({ ...meta, scope: 'procedure' });
+    loggerForMiddleWare.info('Before');
+
+    try {
+      const result = await next({ context: { logger: loggerForMiddleWare } });
+      const duration = performance.now() - start;
+      loggerForMiddleWare.info({ durationMs: duration }, 'After');
+      context.resHeaders?.append(
+        'Server-Timing',
+        `global;dur=${duration.toFixed(2)}`
+      );
+      return result;
+    } catch (error) {
+      const logLevel = (() => {
+        if (!(error instanceof ORPCError)) return 'error';
+        if (error.message === 'DEMO_MODE_ENABLED') return 'info';
+        const errorCode = error.status;
+        if (errorCode >= 500) return 'error';
+        if (errorCode >= 400) return 'warn';
+        return 'info';
+      })();
+      loggerForMiddleWare[logLevel](error);
+      throw error;
+    }
+  })
+  
+  // Demo mode middleware
+  .use(async ({ next, procedure }) => {
+    if (envClient.VITE_IS_DEMO && procedure['~orpc'].route.method !== 'GET') {
+      throw new ORPCError('METHOD_NOT_SUPPORTED', {
+        message: 'DEMO_MODE_ENABLED',
+      });
+    }
+    return await next();
+  });
+
+export const publicProcedure = () => base;
+
+export const protectedProcedure = ({ permissions }) =>
+  base.use(async ({ context, next }) => {
+    const { user, session } = context;
+
+    if (!user || !session) {
+      throw new ORPCError('UNAUTHORIZED');
+    }
+
+    if (!permissions) {
+      return await next({ context: { user, session } });
+    }
+
+    const userHasPermission = await auth.api.userHasPermission({
+      body: { userId: user.id, permissions },
+    });
+
+    if (userHasPermission.error) {
+      throw new ORPCError('INTERNAL_SERVER_ERROR');
+    }
+
+    if (!userHasPermission.success) {
+      throw new ORPCError('FORBIDDEN');
+    }
+
+    return await next({ context: { user, session } });
+  });
+```
+
+### Middleware Chain
+
+The base procedure runs middleware in order:
+
+1. **Auth** - Get session and inject user
+2. **Logger** - Create request logger with metadata
+3. **Database timing** - Track Prisma query performance
+4. **Demo mode** - Block mutations in demo
+5. **Prisma error handler** - Transform database errors
+
+## Creating API Handlers
+
+API handlers are defined in `src/server/routers/`:
+
+```tsx src/server/routers/book.ts
+import { ORPCError } from '@orpc/client';
+import { z } from 'zod';
+import { zBook, zFormFieldsBook } from '@/features/book/schema';
+import { protectedProcedure } from '@/server/orpc';
+
+const tags = ['books'];
+
+export default {
+  getAll: protectedProcedure({ permissions: { book: ['read'] } })
+    .route({
+      method: 'GET',
+      path: '/books',
+      tags,
+    })
+    .input(
+      z.object({
+        cursor: z.string().optional(),
+        limit: z.coerce.number().int().min(1).max(100).prefault(20),
+        searchTerm: z.string().trim().optional().prefault(''),
+      }).prefault({})
+    )
+    .output(
+      z.object({
+        items: z.array(zBook()),
+        nextCursor: z.string().optional(),
+        total: z.number(),
+      })
+    )
+    .handler(async ({ context, input }) => {
+      context.logger.info('Getting books from database');
+
+      const where = {
+        OR: [
+          { title: { contains: input.searchTerm, mode: 'insensitive' } },
+          { author: { contains: input.searchTerm, mode: 'insensitive' } },
+        ],
+      };
+
+      const [total, items] = await Promise.all([
+        context.db.book.count({ where }),
+        context.db.book.findMany({
+          take: input.limit + 1,
+          cursor: input.cursor ? { id: input.cursor } : undefined,
+          orderBy: { title: 'asc' },
+          where,
+          include: { genre: true },
+        }),
+      ]);
+
+      let nextCursor: typeof input.cursor | undefined = undefined;
+      if (items.length > input.limit) {
+        const nextItem = items.pop();
+        nextCursor = nextItem?.id;
+      }
+
+      return { items, nextCursor, total };
+    }),
+
+  getById: protectedProcedure({ permissions: { book: ['read'] } })
+    .route({ method: 'GET', path: '/books/{id}', tags })
+    .input(z.object({ id: z.string() }))
+    .output(zBook())
+    .handler(async ({ context, input }) => {
+      const book = await context.db.book.findUnique({
+        where: { id: input.id },
+        include: { genre: true },
+      });
+
+      if (!book) {
+        throw new ORPCError('NOT_FOUND');
+      }
+
+      return book;
+    }),
+
+  create: protectedProcedure({ permissions: { book: ['create'] } })
+    .route({ method: 'POST', path: '/books', tags })
+    .input(zFormFieldsBook())
+    .output(zBook())
+    .handler(async ({ context, input }) => {
+      return await context.db.book.create({ data: input });
+    }),
+
+  updateById: protectedProcedure({ permissions: { book: ['update'] } })
+    .route({ method: 'POST', path: '/books/{id}', tags })
+    .input(zFormFieldsBook().extend({ id: z.string() }))
+    .output(zBook())
+    .handler(async ({ context, input }) => {
+      return await context.db.book.update({
+        where: { id: input.id },
+        data: input,
+      });
+    }),
+
+  deleteById: protectedProcedure({ permissions: { book: ['delete'] } })
+    .route({ method: 'DELETE', path: '/books/{id}', tags })
+    .input(zBook().pick({ id: true }))
+    .output(z.void())
+    .handler(async ({ context, input }) => {
+      await context.db.book.delete({ where: { id: input.id } });
+    }),
+};
+```
+
+### Handler Structure
+
+1. **Procedure** - `protectedProcedure({ permissions })` or `publicProcedure()`
+2. **Route** - HTTP method, path, and tags for OpenAPI
+3. **Input** - Zod schema for request validation
+4. **Output** - Zod schema for response validation
+5. **Handler** - Async function with context and input
+
+## Router Composition
+
+Routers are composed in `src/server/router.ts`:
+
+```tsx src/server/router.ts
+import { InferRouterInputs, InferRouterOutputs } from '@orpc/server';
+import accountRouter from './routers/account';
+import bookRouter from './routers/book';
+import genreRouter from './routers/genre';
+import userRouter from './routers/user';
+import configRouter from './routers/config';
+
+export type Router = typeof router;
+export type Inputs = InferRouterInputs<typeof router>;
+export type Outputs = InferRouterOutputs<typeof router>;
+
+export const router = {
+  account: accountRouter,
+  book: bookRouter,
+  genre: genreRouter,
+  user: userRouter,
+  config: configRouter,
+};
+```
+
+This creates a nested router structure:
+
+- `book.getAll`
+- `book.getById`
+- `book.create`
+- `user.getAll`
+- etc.
+
+## HTTP Handler
+
+The RPC endpoint is defined in `src/routes/api/rpc.$.ts`:
+
+```tsx src/routes/api/rpc.$.ts
+import { RPCHandler } from '@orpc/server/fetch';
+import { CORSPlugin, ResponseHeadersPlugin } from '@orpc/server/plugins';
+import { createFileRoute } from '@tanstack/react-router';
+import { router } from '@/server/router';
+
+const handler = new RPCHandler(router, {
+  plugins: [new CORSPlugin(), new ResponseHeadersPlugin()],
+});
+
+async function handle({ request }: { request: Request }) {
+  const { response } = await handler.handle(request, {
+    prefix: '/api/rpc',
+    context: {},
+  });
+
+  return response ?? new Response('Not Found', { status: 404 });
+}
+
+export const Route = createFileRoute('/api/rpc/$')({
+  server: {
+    handlers: {
+      GET: handle,
+      POST: handle,
+      PUT: handle,
+      PATCH: handle,
+      DELETE: handle,
+    },
+  },
+});
+```
+
+## Client Setup
+
+The client is configured in `src/lib/orpc/client.ts`:
+
+```tsx src/lib/orpc/client.ts
+import { createORPCClient, onError, ORPCError } from '@orpc/client';
+import { RPCLink } from '@orpc/client/fetch';
+import { createORPCReactQueryUtils } from '@orpc/react-query';
+import type { RouterClient } from '@orpc/server';
+import { envClient } from '@/env/client';
+import type { Router } from './types';
+
+const link = new RPCLink({
+  url:
+    typeof window === 'undefined'
+      ? `${envClient.VITE_BASE_URL}/api/rpc`
+      : `${window.location.origin}/api/rpc`,
+  interceptors: [
+    onError((error) => {
+      if (error instanceof ORPCError && error.message === 'DEMO_MODE_ENABLED') {
+        openDemoModeDrawer();
+      }
+    }),
+  ],
+});
+
+const orpcClient: RouterClient<Router> = createORPCClient(link);
+export const orpc = createORPCReactQueryUtils(orpcClient);
+```
+
+## Using the Client
+
+### Query Data
+
+```tsx src/features/book/app/page-books.tsx
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+
+export const PageBooks = () => {
+  const booksQuery = useInfiniteQuery(
+    orpc.book.getAll.infiniteOptions({
+      input: (cursor: string | undefined) => ({ cursor }),
+      initialPageParam: undefined,
+      maxPages: 10,
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+    })
+  );
+
+  const items = booksQuery.data?.pages.flatMap((p) => p.items) ?? [];
+  
+  return (
+    <div>
+      {items.map((item) => (
+        <BookCard key={item.id} book={item} />
+      ))}
+      {booksQuery.hasNextPage && (
+        <Button onClick={() => booksQuery.fetchNextPage()}>
+          Load More
+        </Button>
+      )}
+    </div>
+  );
+};
+```
+
+### Mutate Data
+
+```tsx
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+
+const queryClient = useQueryClient();
+
+const createMutation = useMutation({
+  ...orpc.book.create.mutationOptions(),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['book', 'getAll'] });
+  },
+});
+
+const handleCreate = async (data) => {
+  await createMutation.mutateAsync({ input: data });
+};
+```
+
+### Direct Client Calls
+
+```tsx
+import { orpc } from '@/lib/orpc/client';
+
+// Direct call (returns promise)
+const book = await orpc.book.getById({ input: { id: '123' } });
+```
+
+## Type Safety
+
+oRPC provides full type inference:
+
+```tsx
+// Input is typed based on handler definition
+const result = await orpc.book.create({
+  input: {
+    title: 'New Book',
+    author: 'Author Name',
+    genreId: 'genre-123',
+    // TypeScript knows all available fields
+  }
+});
+
+// Output is typed based on handler definition
+result.id;        // string
+result.title;     // string
+result.createdAt; // Date
+```
+
+## Error Handling
+
+### Server-Side Errors
+
+```tsx
+import { ORPCError } from '@orpc/server';
+
+if (!book) {
+  throw new ORPCError('NOT_FOUND', {
+    message: 'Book not found',
+  });
+}
+```
+
+### Client-Side Errors
+
+```tsx
+import { ORPCError } from '@orpc/client';
+
+try {
+  await orpc.book.create({ input: data });
+} catch (error) {
+  if (error instanceof ORPCError) {
+    if (error.status === 409) {
+      toast.error('Book already exists');
+    }
+  }
+}
+```
+
+## OpenAPI Integration
+
+oRPC automatically generates OpenAPI specs:
+
+```tsx
+.route({
+  method: 'GET',
+  path: '/books',
+  tags: ['books'], // OpenAPI tag
+})
+```
+
+The OpenAPI schema is exposed via custom endpoints in `src/routes/api/openapi/`.
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use Zod schemas from features">
+    Define validation schemas in feature directories and reuse them in both handlers and forms.
+  </Accordion>
+
+  <Accordion title="Keep handlers focused">
+    Each handler should do one thing - use separate handlers for different operations.
+  </Accordion>
+
+  <Accordion title="Leverage middleware">
+    Put cross-cutting concerns (auth, logging, timing) in middleware, not handlers.
+  </Accordion>
+
+  <Accordion title="Use React Query integration">
+    The `orpc` client provides helpers for `useQuery`, `useMutation`, and `useInfiniteQuery`.
+  </Accordion>
+
+  <Accordion title="Type your context">
+    Always type the context in middleware to get full TypeScript support in handlers.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Database" icon="database" href="/concepts/database">
+    Learn how to use Prisma in API handlers
+  </Card>
+  <Card title="Authentication" icon="lock" href="/concepts/authentication">
+    Understand how auth is integrated with procedures
+  </Card>
+</CardGroup>

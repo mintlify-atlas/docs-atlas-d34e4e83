@@ -1,0 +1,286 @@
+---
+title: Production Build
+description: Building and running Start UI [web] in production
+---
+
+This guide covers the process of building and deploying Start UI [web] to production.
+
+## Build Process
+
+Start UI [web] uses Vite for building the application into an optimized production bundle.
+
+### Prerequisites
+
+Ensure you have:
+
+- Node.js >= 22 installed
+- All dependencies installed via `pnpm install`
+- Production environment variables configured
+
+### Build Commands
+
+The build process consists of several steps that are orchestrated through npm scripts:
+
+```bash
+pnpm install
+```
+
+This will:
+1. Install all dependencies
+2. Run `postinstall` hook which executes:
+   - `pnpm gen:prisma` - Generate Prisma client
+   - `pnpm gen:build-info` - Generate build information JSON
+
+### Build the Application
+
+```bash
+pnpm build
+```
+
+This command:
+1. Sets `NODE_ENV=production`
+2. Validates environment variables (client and server)
+3. Generates build info metadata
+4. Runs `vite build` to create optimized production bundle
+
+The build output is generated in the `.output` directory.
+
+### Optional: Build Storybook
+
+If you want to expose Storybook documentation in production:
+
+```bash
+pnpm storybook:build
+```
+
+This builds Storybook and moves it to `./public/storybook`, making it accessible at `/storybook` in your deployed application.
+
+## Running in Production
+
+After building, start the production server:
+
+```bash
+pnpm start
+```
+
+This runs:
+```bash
+node .output/server/index.mjs
+```
+
+The server will:
+- Load environment variables from `.env` (via dotenv)
+- Start the Nitro server
+- Serve the application on the configured port
+
+## Complete Production Deployment
+
+Here's the complete sequence for production deployment:
+
+```bash
+# 1. Install dependencies
+pnpm install
+
+# 2. (Optional) Build Storybook
+pnpm storybook:build
+
+# 3. Build the application
+pnpm build
+
+# 4. Push database schema (first deployment only)
+pnpm db:push
+
+# 5. Seed database (optional, for initial data)
+pnpm db:seed
+
+# 6. Start the server
+pnpm start
+```
+
+## Environment Variables
+
+The build process validates both client and server environment variables:
+
+### Build-time Variables
+
+These variables are validated and embedded during build:
+
+- `VITE_PORT` - Application port (default: 3000)
+- `VITE_BASE_URL` - Base URL of your application
+- `VITE_ENV_NAME` - Environment name (e.g., "production", "staging")
+- `VITE_ENV_EMOJI` - Environment emoji indicator
+- `VITE_ENV_COLOR` - Environment color indicator
+- `VITE_IS_DEMO` - Enable demo/read-only mode
+- `VITE_S3_BUCKET_PUBLIC_URL` - Public URL for S3 bucket
+
+### Runtime Variables
+
+These variables are required at runtime:
+
+- `DATABASE_URL` - PostgreSQL connection string
+- `AUTH_SECRET` - Secret for authentication (generate with `npx @better-auth/cli@latest secret`)
+- `S3_*` - S3 configuration variables
+- `EMAIL_SERVER` - SMTP server URL
+- `EMAIL_FROM` - Email sender address
+
+See [Environment Setup](/deployment/environment-setup) for complete details.
+
+## Build Optimization
+
+### Tree Shaking
+
+Vite automatically removes unused code during production builds, significantly reducing bundle size.
+
+### Code Splitting
+
+The application is automatically split into chunks:
+- Route-based code splitting via TanStack Router
+- Dynamic imports for heavy components
+- Vendor chunk for node_modules
+
+### Asset Optimization
+
+- CSS is extracted and minified
+- Images are optimized
+- Static assets are hashed for cache busting
+
+## Build Output
+
+After running `pnpm build`, the `.output` directory contains:
+
+```
+.output/
+├── server/
+│   └── index.mjs       # Production server entry point
+└── public/             # Static assets
+    ├── assets/         # Bundled JS/CSS with hashed names
+    └── storybook/      # (Optional) Built Storybook
+```
+
+## Database Management
+
+### Initial Deployment
+
+On first deployment, initialize your database:
+
+```bash
+# Push Prisma schema to database
+pnpm db:push
+
+# Seed initial data (optional)
+pnpm db:seed
+```
+
+### Schema Changes
+
+When you update your Prisma schema:
+
+```bash
+# Generate Prisma client
+pnpm gen:prisma
+
+# Push changes to database
+pnpm db:push
+```
+
+<Warning>
+`db:push` is useful for development and prototyping, but for production deployments, consider using Prisma Migrate for version-controlled schema changes.
+</Warning>
+
+## Process Management
+
+For production servers, use a process manager to ensure your application stays running:
+
+### PM2
+
+```bash
+pnpm install -g pm2
+pm2 start "pnpm start" --name start-ui-web
+pm2 save
+pm2 startup
+```
+
+### systemd
+
+Create a systemd service file `/etc/systemd/system/start-ui-web.service`:
+
+```ini
+[Unit]
+Description=Start UI Web
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/var/www/start-ui-web
+Environment="NODE_ENV=production"
+ExecStart=/usr/bin/pnpm start
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+
+```bash
+sudo systemctl enable start-ui-web
+sudo systemctl start start-ui-web
+```
+
+## Health Checks
+
+Implement health checks for your deployment:
+
+- Monitor the application endpoint
+- Check database connectivity
+- Verify S3 storage access
+- Test email service connection
+
+## Troubleshooting
+
+### Build Fails
+
+**Environment variable validation errors:**
+- Ensure all required environment variables are set
+- Check `.env` file is present and properly formatted
+
+**TypeScript errors:**
+- Run `pnpm lint:ts` to check for type errors
+- Fix all type errors before building
+
+### Runtime Errors
+
+**Database connection fails:**
+- Verify `DATABASE_URL` is correct
+- Ensure database is accessible from production server
+- Check firewall rules and security groups
+
+**S3 uploads fail:**
+- Verify S3 credentials and bucket configuration
+- Check CORS settings on S3 bucket
+- Ensure bucket exists and is accessible
+
+**Emails not sending:**
+- Verify `EMAIL_SERVER` SMTP configuration
+- Check email service credentials
+- Review email service logs
+
+## Performance Considerations
+
+- **Enable gzip/brotli compression** at your reverse proxy (nginx, Apache)
+- **Use a CDN** for static assets
+- **Configure caching headers** appropriately
+- **Monitor memory usage** and adjust Node.js heap size if needed
+- **Set up logging** to track errors and performance metrics
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Environment Setup" icon="gear" href="/deployment/environment-setup">
+    Configure all production environment variables
+  </Card>
+  <Card title="Docker Setup" icon="docker" href="/deployment/docker">
+    Learn about Docker services for development
+  </Card>
+</CardGroup>

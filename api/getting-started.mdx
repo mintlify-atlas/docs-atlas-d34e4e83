@@ -1,0 +1,477 @@
+---
+title: Getting Started with the API
+description: Learn how to use the type-safe API client in your React components
+---
+
+This guide shows you how to use the oRPC API client to fetch data, perform mutations, and handle errors in your React components.
+
+## Importing the Client
+
+The API client is available as a singleton instance:
+
+```typescript
+import { orpc } from '@/lib/orpc/client';
+```
+
+This client is integrated with [TanStack Query](https://tanstack.com/query) (React Query), providing powerful data fetching and caching capabilities.
+
+## Queries
+
+Queries are used to fetch data from the API. They automatically handle loading states, caching, and background refetching.
+
+### Basic Query
+
+Fetch a single item:
+
+```typescript
+import { useQuery } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+
+export const UserProfile = ({ userId }: { userId: string }) => {
+  const userQuery = useQuery(
+    orpc.user.getById.queryOptions({ input: { id: userId } })
+  );
+
+  if (userQuery.status === 'pending') return <div>Loading...</div>;
+  if (userQuery.status === 'error') return <div>Error: {userQuery.error.message}</div>;
+
+  return <div>Welcome, {userQuery.data.name}!</div>;
+};
+```
+
+### Infinite Query
+
+For paginated data with infinite scrolling:
+
+```typescript
+import { useInfiniteQuery } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+
+export const UserList = ({ searchTerm }: { searchTerm: string }) => {
+  const usersQuery = useInfiniteQuery(
+    orpc.user.getAll.infiniteOptions({
+      input: (cursor: string | undefined) => ({
+        searchTerm,
+        cursor,
+      }),
+      initialPageParam: undefined,
+      maxPages: 10,
+      getNextPageParam: (lastPage) => lastPage.nextCursor,
+    })
+  );
+
+  const users = usersQuery.data?.pages.flatMap((p) => p.items) ?? [];
+
+  return (
+    <div>
+      {users.map((user) => (
+        <UserCard key={user.id} user={user} />
+      ))}
+      {usersQuery.hasNextPage && (
+        <button onClick={() => usersQuery.fetchNextPage()}>
+          Load More
+        </button>
+      )}
+    </div>
+  );
+};
+```
+
+Source: `src/features/user/manager/page-users.tsx:50`
+
+### Query with Dependencies
+
+Fetch data that depends on another query:
+
+```typescript
+const bookQuery = useQuery(
+  orpc.book.getById.queryOptions({ input: { id: bookId } })
+);
+
+const genresQuery = useQuery(
+  orpc.genre.getAll.queryOptions()
+);
+
+// Both queries run in parallel
+// TypeScript knows the exact shape of bookQuery.data and genresQuery.data
+```
+
+Source: `src/features/book/manager/form-book.tsx:19`
+
+## Mutations
+
+Mutations are used to create, update, or delete data. They integrate with React Query's cache invalidation system.
+
+### Basic Mutation
+
+Create a new resource:
+
+```typescript
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { orpc } from '@/lib/orpc/client';
+
+export const CreateUserForm = () => {
+  const queryClient = useQueryClient();
+  const form = useForm({
+    resolver: zodResolver(zFormFieldsUser()),
+    values: {
+      name: '',
+      email: '',
+      role: 'user',
+    },
+  });
+
+  const userCreate = useMutation(
+    orpc.user.create.mutationOptions({
+      onSuccess: async () => {
+        // Invalidate and refetch user list
+        await queryClient.invalidateQueries({
+          queryKey: orpc.user.getAll.key(),
+          type: 'all',
+        });
+        
+        toast.success('User created successfully');
+      },
+      onError: (error) => {
+        toast.error('Failed to create user');
+      },
+    })
+  );
+
+  return (
+    <Form {...form} onSubmit={(values) => userCreate.mutate(values)}>
+      {/* Form fields */}
+      <Button type="submit" loading={userCreate.isPending}>
+        Create User
+      </Button>
+    </Form>
+  );
+};
+```
+
+Source: `src/features/user/manager/page-user-new.tsx:40`
+
+### Update Mutation
+
+Update an existing resource:
+
+```typescript
+const bookUpdate = useMutation(
+  orpc.book.updateById.mutationOptions({
+    onSuccess: async () => {
+      // Invalidate list
+      await queryClient.invalidateQueries({
+        queryKey: orpc.book.getAll.key(),
+        type: 'all',
+      });
+      
+      // Navigate back
+      navigateBack({ ignoreBlocker: true });
+    },
+    onError: (error) => {
+      if (
+        error instanceof ORPCError &&
+        error.code === 'CONFLICT' &&
+        error.data?.target?.includes('title')
+      ) {
+        form.setError('title', {
+          message: 'This title already exists',
+        });
+        return;
+      }
+      
+      toast.error('Failed to update book');
+    },
+  })
+);
+
+// Usage
+bookUpdate.mutate({ id: bookId, ...values });
+```
+
+Source: `src/features/book/manager/page-book-update.tsx:49`
+
+### Delete Mutation
+
+Delete a resource:
+
+```typescript
+const handleDelete = async () => {
+  try {
+    await orpc.user.deleteById.call({ id: userId });
+    
+    // Invalidate queries
+    await queryClient.invalidateQueries({
+      queryKey: orpc.user.getAll.key(),
+    });
+    await queryClient.invalidateQueries({
+      queryKey: orpc.user.getById.key({ input: { id: userId } }),
+    });
+    
+    toast.success('User deleted');
+    navigate({ to: '/users' });
+  } catch (error) {
+    toast.error('Failed to delete user');
+  }
+};
+```
+
+Source: `src/features/user/manager/page-user.tsx:66`
+
+## Error Handling
+
+### Type-Safe Error Handling
+
+oRPC errors are instances of `ORPCError` with typed error codes:
+
+```typescript
+import { ORPCError } from '@orpc/client';
+
+if (error instanceof ORPCError) {
+  switch (error.code) {
+    case 'UNAUTHORIZED':
+      // User is not logged in
+      break;
+    case 'FORBIDDEN':
+      // User lacks permissions
+      break;
+    case 'NOT_FOUND':
+      // Resource doesn't exist
+      break;
+    case 'CONFLICT':
+      // Unique constraint violation
+      // error.data contains additional info
+      break;
+    case 'BAD_REQUEST':
+      // Invalid input
+      break;
+    default:
+      // Other errors
+  }
+}
+```
+
+### Field-Specific Errors
+
+Handle validation errors for specific form fields:
+
+```typescript
+onError: (error) => {
+  if (
+    error instanceof ORPCError &&
+    error.code === 'CONFLICT' &&
+    error.data?.target?.includes('email')
+  ) {
+    form.setError('email', {
+      message: 'This email is already in use',
+    });
+    return;
+  }
+  
+  // Generic error
+  toast.error('An error occurred');
+}
+```
+
+Source: `src/features/user/manager/page-user-new.tsx:52`
+
+### Global Error Handling
+
+The client includes a global error interceptor for demo mode:
+
+```typescript
+interceptors: [
+  onError((error) => {
+    if (error instanceof ORPCError && error.message === 'DEMO_MODE_ENABLED') {
+      openDemoModeDrawer();
+    }
+  }),
+]
+```
+
+Source: `src/lib/orpc/client.ts:17`
+
+## Cache Management
+
+### Query Keys
+
+Each procedure provides a `key()` method for cache management:
+
+```typescript
+// Invalidate all user queries
+queryClient.invalidateQueries({
+  queryKey: orpc.user.getAll.key(),
+});
+
+// Invalidate specific user query
+queryClient.invalidateQueries({
+  queryKey: orpc.user.getById.key({ input: { id: userId } }),
+});
+```
+
+### Optimistic Updates
+
+Update the cache immediately before the mutation completes:
+
+```typescript
+const mutation = useMutation(
+  orpc.user.updateById.mutationOptions({
+    onMutate: async (variables) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({
+        queryKey: orpc.user.getById.key({ input: { id: variables.id } }),
+      });
+      
+      // Snapshot previous value
+      const previous = queryClient.getQueryData(
+        orpc.user.getById.key({ input: { id: variables.id } })
+      );
+      
+      // Optimistically update
+      queryClient.setQueryData(
+        orpc.user.getById.key({ input: { id: variables.id } }),
+        variables
+      );
+      
+      return { previous };
+    },
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previous) {
+        queryClient.setQueryData(
+          orpc.user.getById.key({ input: { id: variables.id } }),
+          context.previous
+        );
+      }
+    },
+  })
+);
+```
+
+## Type Safety
+
+### Automatic Type Inference
+
+The API client provides full type inference:
+
+```typescript
+// TypeScript knows this returns { items: User[], nextCursor?: string, total: number }
+const usersQuery = useQuery(orpc.user.getAll.queryOptions({ input: {} }));
+
+// TypeScript knows the exact shape of User
+const user = usersQuery.data?.items[0];
+const name: string = user?.name; // ✓ Type-safe
+const invalid = user?.doesNotExist; // ✗ TypeScript error
+```
+
+### Input Validation
+
+Inputs are validated at runtime and compile-time:
+
+```typescript
+// ✓ Valid
+orpc.user.getAll.queryOptions({
+  input: {
+    limit: 20,
+    searchTerm: 'john',
+  },
+});
+
+// ✗ TypeScript error: limit must be a number
+orpc.user.getAll.queryOptions({
+  input: {
+    limit: '20',
+  },
+});
+
+// Runtime validation will also catch invalid inputs
+```
+
+### Type Imports
+
+Import inferred types when needed:
+
+```typescript
+import type { Inputs, Outputs } from '@/lib/orpc/types';
+
+// Get the input type for a specific procedure
+type GetAllUsersInput = Inputs['user']['getAll'];
+
+// Get the output type for a specific procedure
+type GetAllUsersOutput = Outputs['user']['getAll'];
+```
+
+## Best Practices
+
+### 1. Colocate Queries with Components
+
+Define queries in the same file as the component that uses them:
+
+```typescript
+export const UserProfile = ({ userId }: { userId: string }) => {
+  const userQuery = useQuery(
+    orpc.user.getById.queryOptions({ input: { id: userId } })
+  );
+  
+  // Component logic...
+};
+```
+
+### 2. Always Invalidate Related Queries
+
+When mutating data, invalidate all queries that might be affected:
+
+```typescript
+onSuccess: async () => {
+  await queryClient.invalidateQueries({
+    queryKey: orpc.user.getAll.key(), // List query
+  });
+  await queryClient.invalidateQueries({
+    queryKey: orpc.user.getById.key({ input: { id: userId } }), // Detail query
+  });
+}
+```
+
+### 3. Handle Loading and Error States
+
+Always handle all query states:
+
+```typescript
+if (query.status === 'pending') return <Spinner />;
+if (query.status === 'error') return <ErrorMessage error={query.error} />;
+
+// Now TypeScript knows query.data is defined
+return <div>{query.data.name}</div>;
+```
+
+### 4. Use Type Guards for Errors
+
+Check error types before accessing properties:
+
+```typescript
+if (error instanceof ORPCError) {
+  // Safe to access error.code, error.data
+}
+```
+
+### 5. Leverage Parallel Queries
+
+Fetch independent data in parallel:
+
+```typescript
+const userQuery = useQuery(orpc.user.getById.queryOptions({ input: { id } }));
+const sessionsQuery = useQuery(orpc.user.getUserSessions.queryOptions({ input: { userId: id } }));
+
+// Both queries run simultaneously
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="API Architecture" icon="diagram-project" href="/api/overview">
+    Deep dive into the API architecture and server implementation
+  </Card>
+  <Card title="TanStack Query Docs" icon="arrow-up-right-from-square" href="https://tanstack.com/query/latest/docs/framework/react/overview">
+    Learn more about React Query features
+  </Card>
+</CardGroup>
